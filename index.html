@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Arc Command</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0d4a28">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Arc Command">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="favicon.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+:root { --fs-border:#444; --fs-card:#2e333a; --fs-text:#e8e8e8; }
+* { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+html,body { background:#1d2126; color:#e8e8e8; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; min-height:100%; }
+header { padding:calc(env(safe-area-inset-top,0px) + 18px) 18px 14px; background:#171b1f; border-bottom:1px solid #333; display:flex; align-items:center; gap:12px; }
+.wordmark { font-size:21px; font-weight:800; letter-spacing:1.5px; }
+.wordmark .arc { color:#e8e8e8; } .wordmark .cmd { color:#3bb06a; }
+.badge { font-size:10.5px; color:#8a9; border:1px solid #2e5c41; border-radius:6px; padding:2px 6px; }
+main { max-width:640px; margin:0 auto; padding:26px 18px 60px; }
+.card { background:#262a30; border:1px solid #3a3f46; border-radius:14px; padding:22px; margin-bottom:16px; }
+.card h2 { font-size:16px; margin-bottom:8px; }
+.card p { font-size:13.5px; color:#aab; line-height:1.55; margin-bottom:8px; }
+.btn { border:1px solid #444; background:#2e333a; color:#e8e8e8; border-radius:8px; padding:7px 10px; font-size:13px; cursor:pointer; touch-action:manipulation; user-select:none; text-decoration:none; display:inline-block; }
+.btn:active { background:#3a414a; }
+.fsbtn { border:1px solid var(--fs-border); background:var(--fs-card); color:var(--fs-text); border-radius:10px; padding:11px 16px; font-size:14px; font-weight:600; cursor:pointer; touch-action:manipulation; }
+.primary { background:#1b8a3f; border-color:#1b8a3f; color:#fff; font-weight:700; font-size:15px; padding:13px 20px; }
+.modal { position:fixed; inset:0; background:rgba(0,0,0,.75); display:none; align-items:center; justify-content:center; z-index:60; padding:16px; }
+.modal.show { display:flex; }
+.modalbox { background:#262a30; border:1px solid #444; border-radius:12px; padding:18px; max-width:420px; width:100%; max-height:80vh; overflow-y:auto; }
+.row { display:flex; gap:8px; justify-content:flex-end; margin-top:14px; }
+ul.steps { font-size:13px; color:#aab; line-height:1.7; margin:6px 0 0 18px; }
+footer { text-align:center; font-size:11px; color:#667; padding:18px; }
+</style>
+</head>
+<body>
+<!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (FireSpark V1.30 feature state) per the designed removal seam -->
+<header>
+  <img src="icon-192.png" alt="" style="width:34px;height:34px;border-radius:8px">
+  <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
+  <span class="badge">v0.01 beta</span>
+</header>
+<main>
+  <div class="card">
+    <h2>&#9889; Vendor console</h2>
+    <p>Arc Command builds and edits <b>client profiles</b> for <b>Arc Adapt</b> and <b>EverDue</b>. A profile is a single file that carries the client's company name, users &amp; roles, granted features, equipment field libraries and test checklists.</p>
+    <button class="fsbtn primary" id="acOpen">&#9889; Open profile builder</button>
+    <p style="margin-top:12px;font-size:12px;color:#889">Protected by a passphrase you set on first use — stored on this device only. Nothing secret is in this page.</p>
+  </div>
+  <div class="card">
+    <h2>How a client gets onboarded</h2>
+    <ul class="steps">
+      <li>Build the profile here (grants = what they're issued; defaults = what starts on).</li>
+      <li>Export — you get an <b>arc-profile-&lt;client&gt;.json</b> file.</li>
+      <li>The client loads it in Arc Adapt or EverDue (Dashboard &#8594; load profile). Their admin can then manage users and toggle features <i>within</i> what you granted.</li>
+      <li>To change an existing client: load their profile file here, edit, re-export.</li>
+    </ul>
+  </div>
+</main>
+<footer>Arc Command v0.01 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<script>
+"use strict";
+function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+async function fsSha256(t) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(t)));
+  return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, "0")).join("");
+}
+function isMobileShare() {
+  const ua = navigator.userAgent;
+  const iOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  return iOS || /Android/.test(ua);
+}
+function canShareFile(file) {
+  return isMobileShare() && navigator.canShare && navigator.canShare({ files: [file] });
+}
+function dlAnchor(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+function deliverFile(blob, name, mime) {
+  // Resolves "shared" | "downloaded" | "cancelled" so callers can react when the user
+  // backs out of the iOS share sheet — a cancelled share used to look exactly like a
+  // successful save (root cause of the 21 Jul lost-work incident).
+  const file = new File([blob], name, { type: mime });
+  if (canShareFile(file)) {
+    // no title: iOS saves it as a stray .txt beside the file. If iOS blocks the share
+    // sheet (stale tap after a dialog), fall back to a plain download so the save is
+    // never silently lost (iPad/iPhone Save As fix, V1.0)
+    return navigator.share({ files: [file] }).then(() => "shared", err => {
+      if (err && err.name === "AbortError") return "cancelled";
+      dlAnchor(blob, name);
+      return "downloaded";
+    });
+  }
+  dlAnchor(blob, name);
+  return Promise.resolve("downloaded");
+}
+function fsLibMerge(keys, extra) {
+  const eq = [], items = [], seen = Object.create(null);
+  (keys || []).forEach(k => {
+    const lib = fsLibFind(k, extra);
+    if (!lib) return;
+    (lib.fields || []).forEach(f => {
+      const n = String(f).trim();
+      if (!n) return;
+      if (!seen[n]) { seen[n] = 1; eq.push(n); }
+    });
+    (lib.items || []).forEach(f => {
+      const n = String(f).trim();
+      if (n && items.indexOf(n) < 0) items.push(n);
+    });
+  });
+  /* never flag a qty field that is not actually in the merged list */
+  return { equipment: eq, equipmentItems: items.filter(n => eq.indexOf(n) >= 0) };
+}
+function fsLibFromFile(obj) {
+  if (!obj || obj.app !== FS_LIB_APP) return null;
+  const fields = Array.isArray(obj.equipment) ? obj.equipment.map(x => String(x).trim()).filter(Boolean) : [];
+  if (!fields.length) return null;
+  const items = Array.isArray(obj.equipmentItems) ? obj.equipmentItems.map(x => String(x).trim()).filter(Boolean) : [];
+  const label = String(obj.label || obj.name || "Loaded library").trim() || "Loaded library";
+  const key = String(obj.key || ("custom-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-"))).trim();
+  return { key: key, label: label, fields: fields, items: items.filter(n => fields.indexOf(n) >= 0), custom: true };
+}
+const TOOLS_TAB = [
+  { id:"timer",  label:"Timer",       icon:"⏱" },
+  { id:"meter",  label:"Sound meter", icon:"🎚" },
+  { id:"camera", label:"Camera",      icon:"📷" },
+  { id:"photos", label:"Site photos", icon:"🖼" },
+  { id:"find",    label:"Find device", icon:"🔎" },
+  { id:"measure", label:"Measure",     icon:"📏" },
+  { id:"zones",   label:"Zones (ZN)",  icon:"⬠" },
+  { id:"zonecounts", label:"Zone counts", icon:"🔢" },
+  { id:"battcalc", label:"Battery calc", icon:"🔋" },
+  { id:"annuals", label:"Annuals", icon:"📋" },
+  { id:"qrlabels", label:"QR labels",   icon:"🏷" },
+  { id:"qrscan",   label:"Scan tag",    icon:"🔳" }
+];
+const FS_EQUIP_FIELDS = [
+  "Panel location", "Panel type", "Panel instructions", "Panel battery type / size", "Detectors", "EWIS location", "EWIS type",
+  "OWS / speaker notes", "Fire extinguisher locations", "Fire extinguisher", "Fire doors", "Hose reel locations",
+  "Hydrant / booster location", "Pump room location", "Sprinkler valve room",
+  "Exit lights", "Emergency lights", "Gas suppression", "Other equipment"
+];
+const FS_EQUIP_LIBS = [
+  { key:"fire", label:"Fire",
+    fields:["Panel location","Panel type","Panel battery type / size","Panel instructions","Detectors",
+      "EWIS location","EWIS type","OWS / speaker notes","Fire extinguisher locations","Fire extinguisher",
+      "Fire doors","Hose reel locations","Hydrant / booster location","Pump room location","Sprinkler valve room",
+      "Exit lights","Emergency lights","Gas suppression","Other equipment"],
+    items:["Fire extinguisher","Detectors","Exit lights","Emergency lights","OWS / speaker notes","Hose reel locations","Fire doors"] },
+  { key:"electrical", label:"Electrical",
+    fields:["Main switchboard location","Main switch / isolation point","Distribution board locations","Distribution boards",
+      "RCD test points","Switchboard schedule / drawings","Test & tag (portable appliances)","Exit lights","Emergency lights",
+      "Emergency light battery type","Metering / CT chamber","Earthing / MEN link location","Solar / inverter location",
+      "Generator location","UPS location","Hazardous area equipment","Other equipment"],
+    items:["Distribution boards","RCD test points","Test & tag (portable appliances)","Exit lights","Emergency lights"] },
+  { key:"firstaid", label:"First aid",
+    fields:["First aid kit locations","First aid kits","Kit type / template","AED locations","AEDs","AED pad expiry",
+      "AED battery expiry","Eyewash station locations","Eyewash stations","Emergency shower locations","Burns kit",
+      "Snake bite kit","Spill kit","First aid room location","Other equipment"],
+    items:["First aid kits","AEDs","Eyewash stations"] },
+  { key:"grounds", label:"Grounds & property maintenance",
+    fields:["Lawn areas / sections","Approx mowing area","Garden bed locations","Hedges","Trees requiring attention",
+      "Irrigation controller location","Irrigation zones","Tap / water points","Green waste location",
+      "Gate codes / access points","No-spray areas","Chemical restrictions","Site hazards","Other equipment"],
+    items:["Hedges","Trees requiring attention","Irrigation zones"] }
+];
+const FS_BLD_RES = [["battcalc", "Battery calculator"], ["timer", "Countdown timer"], ["meter", "Sound meter"],
+                    ["annuals", "Annuals converter"], ["pa", "PA announcements"], ["qrlookup", "Scan QR tag"], ["library", "Library"]];
+const FS_LIB_APP = "firespark-equipment-library";
+const FS_EQUIP_ITEMS = ["Fire extinguisher", "Detectors", "Exit lights", "Emergency lights", "OWS / speaker notes", "Hose reel locations", "Fire doors"];
+/* standalone shell globals — no register app around us */
+let fsProfile = null;
+let fsChecklists = null;
+/* ================= SparkCommand - VENDOR ONLY =========================================
+   TEMPORARY HOME for the profile builder. When the standalone admin app exists, delete
+   the button injected in fsDashRender below and lift this whole block out. The client
+   editor above stays where it is and the profile file format does not change.
+   The passcode is set by the vendor on first use and hashed into this device's storage
+   only - nothing secret ships in the (public) repo. ===================================== */
+async function fsSparkGate() {
+  let stored = "";
+  try { stored = localStorage.getItem("fs-spark-pin") || ""; } catch (e) {}
+  if (!stored) {
+    if (!confirm("Arc Command is the profile builder — the vendor-side tool.\n\nNo passcode is set on this device yet. Set one now?")) return false;
+    const p1 = prompt("Choose an Arc Command passphrase (8+ characters — this device only):") || "";
+    if (p1.length < 8) { if (p1) alert("Too short — use at least 8 characters. Nothing was set."); return false; }
+    const p2 = prompt("Re-enter it:") || "";
+    if (p1 !== p2) { alert("They didn't match — nothing was set."); return false; }
+    try { localStorage.setItem("fs-spark-pin", await fsSha256(p1)); } catch (e) {}
+    alert("Passcode set ✓ — it is stored on this device only. You'll need to set it again on any other device you build profiles from.");
+    return true;
+  }
+  const p = prompt("Arc Command passphrase:");
+  if (p === null) return false;
+  if ((await fsSha256(p)) !== stored) { alert("Wrong passphrase."); return false; }
+  return true;
+}
+async function fsSparkOpen() { if (await fsSparkGate()) fsBuilderOpen(); }
+
+/* ================= Equipment + checklist editors (vendor side) =========================
+   These live INSIDE the builder because they define what a client is issued, not what a
+   client switches on. They sit above the builder in the stack (z 122 over its 121).
+   Builder state holds null until something is edited, so an untouched build keeps the
+   existing "inherit from the loaded profile" behaviour exactly. ========================= */
+function fsSubModal(id) {
+  let m = document.getElementById(id);
+  if (m) return m;
+  m = document.createElement("div");
+  m.className = "modal"; m.id = id; m.style.zIndex = "122";
+  m.innerHTML = '<div class="modalbox" style="max-width:600px;width:95vw;max-height:88vh;overflow-y:auto;text-align:left"><div id="' + id + 'Body"></div></div>';
+  document.body.appendChild(m);
+  return m;
+}
+function fsClone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
+
+/* ---------- equipment fields ---------- */
+function fsEqEditOpen() {
+  const st = fsBld;
+  if (!st.equipment) {
+    const base = (st._src && st._src.equipment) || (fsProfile && fsProfile.equipment) || FS_EQUIP_FIELDS;
+    st.equipment = fsClone(base).slice();
+  }
+  if (!st.equipmentItems) {
+    const base = (st._src && st._src.equipmentItems) || (fsProfile && fsProfile.equipmentItems) || FS_EQUIP_ITEMS;
+    st.equipmentItems = fsClone(base).slice();
+  }
+  fsSubModal("fsEqModal").classList.add("show");
+  fsEqEditRender();
+}
+function fsEqEditRender() {
+  const st = fsBld, body = document.getElementById("fsEqModalBody");
+  let h = '<h3 style="margin-bottom:4px">&#129520; Equipment fields</h3>';
+  h += '<div style="font-size:12px;color:#999;margin-bottom:12px">The rows that appear on every site\'s Site Equipment tab. ' +
+       'Tick <b>qty</b> where a field should take typed quantity lines like "2 &times; CO2 4.5kg".</div>';
+  h += '<div style="font-size:11.5px;color:#ffb74d;margin-bottom:10px">Renaming a field does not rename data already saved against the old name on existing sites.</div>';
+  st.equipment.forEach((f, i) => {
+    const isItem = st.equipmentItems.indexOf(f) >= 0;
+    h += '<div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">' +
+      '<input data-eqname="' + i + '" value="' + fsEsc(f) + '" style="flex:1;min-width:0;padding:6px 8px;border-radius:6px;border:1px solid #444;background:#2e333a;color:#e8e8e8;font-size:13px">' +
+      '<label title="Typed quantity lines" style="display:flex;align-items:center;gap:3px;font-size:11.5px;cursor:pointer"><input type="checkbox" data-eqitem="' + i + '"' + (isItem ? " checked" : "") + '>qty</label>' +
+      '<button class="btn" data-equp="' + i + '" style="padding:3px 7px"' + (i ? '' : ' disabled') + '>&#9650;</button>' +
+      '<button class="btn" data-eqdn="' + i + '" style="padding:3px 7px"' + (i < st.equipment.length - 1 ? '' : ' disabled') + '>&#9660;</button>' +
+      '<button class="btn" data-eqdel="' + i + '" style="padding:3px 7px;color:#ff8a80">&#10005;</button></div>';
+  });
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+       '<button class="btn" id="fsEqAdd">&#65291; Add field</button>' +
+       '<button class="btn" id="fsEqReset">' + ((st.libs || []).length ? "Rebuild from libraries" : "Reset to standard list") + '</button>' +
+       '<span style="flex:1"></span><button class="btn" id="fsEqDone">Done</button></div>';
+  body.innerHTML = h;
+  const sync = () => {
+    body.querySelectorAll("[data-eqname]").forEach(inp => {
+      const i = +inp.dataset.eqname, old = st.equipment[i], nv = inp.value.trim();
+      if (nv && nv !== old) {
+        st.eqEdited = true;
+        const j = st.equipmentItems.indexOf(old);
+        st.equipment[i] = nv;
+        if (j >= 0) st.equipmentItems[j] = nv;
+      }
+    });
+  };
+  body.querySelectorAll("[data-eqname]").forEach(inp => inp.onchange = () => { sync(); fsEqEditRender(); });
+  body.querySelectorAll("[data-eqitem]").forEach(cb => cb.onchange = () => {
+    sync();
+    const f = st.equipment[+cb.dataset.eqitem], j = st.equipmentItems.indexOf(f);
+    if (cb.checked && j < 0) st.equipmentItems.push(f);
+    if (!cb.checked && j >= 0) st.equipmentItems.splice(j, 1);
+  });
+  body.querySelectorAll("[data-equp]").forEach(b => b.onclick = () => {
+    sync(); st.eqEdited = true; const i = +b.dataset.equp;
+    st.equipment.splice(i - 1, 0, st.equipment.splice(i, 1)[0]); fsEqEditRender();
+  });
+  body.querySelectorAll("[data-eqdn]").forEach(b => b.onclick = () => {
+    sync(); st.eqEdited = true; const i = +b.dataset.eqdn;
+    st.equipment.splice(i + 1, 0, st.equipment.splice(i, 1)[0]); fsEqEditRender();
+  });
+  body.querySelectorAll("[data-eqdel]").forEach(b => b.onclick = () => {
+    sync(); const i = +b.dataset.eqdel, f = st.equipment[i];
+    if (!confirm('Remove the "' + f + '" field?\n\nData already saved against it on existing sites stays in the register but stops being shown.')) return;
+    st.eqEdited = true;
+    st.equipment.splice(i, 1);
+    const j = st.equipmentItems.indexOf(f); if (j >= 0) st.equipmentItems.splice(j, 1);
+    fsEqEditRender();
+  });
+  document.getElementById("fsEqAdd").onclick = () => { sync(); st.eqEdited = true; st.equipment.push("New field"); fsEqEditRender(); };
+  document.getElementById("fsEqReset").onclick = () => {
+    if ((st.libs || []).length) {
+      if (!confirm("Rebuild the equipment list from the ticked libraries?\n\nHand edits will be discarded.")) return;
+      const mg = fsLibMerge(st.libs, st.libExtra);
+      st.equipment = mg.equipment; st.equipmentItems = mg.equipmentItems; st.eqEdited = false; fsEqEditRender(); return;
+    }
+    if (!confirm("Put the equipment list back to the standard set?")) return;
+    st.equipment = FS_EQUIP_FIELDS.slice(); st.equipmentItems = FS_EQUIP_ITEMS.slice(); st.eqEdited = false; fsEqEditRender();
+  };
+  document.getElementById("fsEqDone").onclick = () => {
+    sync();
+    document.getElementById("fsEqModal").classList.remove("show");
+    fsBuilderRender();
+  };
+}
+
+/* ---------- checklists ---------- */
+let fsCkMode = "";
+function fsCkEditOpen() {
+  const st = fsBld;
+  if (!st.checklists) {
+    const base = (st._src && st._src.checklists) || (fsProfile && fsProfile.checklists) || fsChecklists;
+    st.checklists = base && base.modes ? fsClone(base) : { app: "firespark-checklists", version: 1, modes: {} };
+  }
+  const ms = Object.keys(st.checklists.modes || {});
+  if (!fsCkMode || ms.indexOf(fsCkMode) < 0) fsCkMode = ms[0] || "";
+  fsSubModal("fsCkModal").classList.add("show");
+  fsCkEditRender();
+}
+function fsCkCount(md) { return (md && md.sections || []).reduce((a, s) => a + (s.items || []).length, 0); }
+function fsCkEditRender() {
+  const st = fsBld, body = document.getElementById("fsCkModalBody");
+  const cl = st.checklists;
+  const modes = Object.keys(cl.modes || {});
+  let h = '<h3 style="margin-bottom:4px">&#128203; Test checklists</h3>';
+  h += '<div style="font-size:12px;color:#999;margin-bottom:8px">What a tech ticks off during a test session. These are issued with the profile.</div>';
+  h += '<div style="font-size:11.5px;color:#ff8a80;margin-bottom:10px">These carry compliance meaning. Removing an item removes it from every future test on this profile — check the standard before cutting anything.</div>';
+  if (!modes.length) {
+    h += '<div style="font-size:13px;color:#999;margin-bottom:10px">No checklists in this profile yet.</div>';
+  } else {
+    h += '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px">';
+    modes.forEach(m => {
+      const md = cl.modes[m];
+      h += '<button class="btn" data-ckmode="' + fsEsc(m) + '"' + (m === fsCkMode ? ' style="background:#2596ab;color:#fff"' : '') + '>' +
+           fsEsc(md.label || m) + ' <span style="opacity:.7">(' + fsCkCount(md) + ')</span></button>';
+    });
+    h += '</div>';
+  }
+  const md = cl.modes[fsCkMode];
+  if (md) {
+    h += '<div style="font-size:11.5px;color:#888;margin-bottom:8px">' + fsEsc(md.ref || "") + '</div>';
+    (md.sections || []).forEach((sec, si) => {
+      h += '<div style="border:1px solid #3a4047;border-radius:8px;padding:9px;margin-bottom:9px">';
+      h += '<div style="display:flex;gap:5px;align-items:center;margin-bottom:7px">' +
+        '<input data-cksec="' + si + '" value="' + fsEsc(sec.title || "") + '" style="flex:1;min-width:0;padding:6px 8px;border-radius:6px;border:1px solid #444;background:#2e333a;color:#e8e8e8;font-size:13px;font-weight:700">' +
+        '<button class="btn" data-cksup="' + si + '" style="padding:3px 7px"' + (si ? '' : ' disabled') + '>&#9650;</button>' +
+        '<button class="btn" data-cksdn="' + si + '" style="padding:3px 7px"' + (si < md.sections.length - 1 ? '' : ' disabled') + '>&#9660;</button>' +
+        '<button class="btn" data-cksdel="' + si + '" style="padding:3px 7px;color:#ff8a80">&#10005;</button></div>';
+      (sec.items || []).forEach((it, ii) => {
+        h += '<div style="display:flex;gap:4px;align-items:flex-start;margin-bottom:4px">' +
+          '<input data-ckk="' + si + '.' + ii + '" value="' + fsEsc(it.k || "") + '" style="width:62px;flex:none;padding:5px;border-radius:5px;border:1px solid #444;background:#262b31;color:#bbb;font-size:11.5px">' +
+          '<textarea data-ckt="' + si + '.' + ii + '" rows="2" style="flex:1;min-width:0;padding:5px 7px;border-radius:5px;border:1px solid #444;background:#262b31;color:#e8e8e8;font-size:12px;resize:vertical">' + fsEsc(it.t || "") + '</textarea>' +
+          '<button class="btn" data-ckidel="' + si + '.' + ii + '" style="padding:3px 6px;color:#ff8a80;flex:none">&#10005;</button></div>';
+      });
+      h += '<button class="btn" data-ckiadd="' + si + '" style="margin-top:4px">&#65291; Add item</button>';
+      h += '</div>';
+    });
+    h += '<button class="btn" id="fsCkSecAdd">&#65291; Add section</button>';
+  }
+  h += '<div class="row" style="margin-top:14px;gap:8px"><button class="btn" id="fsCkRevert">Revert to the loaded profile\'s</button>' +
+       '<span style="flex:1"></span><button class="btn" id="fsCkDone">Done</button></div>';
+  body.innerHTML = h;
+
+  const sync = () => {
+    const m2 = cl.modes[fsCkMode];
+    if (!m2) return;
+    body.querySelectorAll("[data-cksec]").forEach(i2 => { m2.sections[+i2.dataset.cksec].title = i2.value; });
+    body.querySelectorAll("[data-ckk]").forEach(i2 => {
+      const [a, b2] = i2.dataset.ckk.split("."); m2.sections[+a].items[+b2].k = i2.value;
+    });
+    body.querySelectorAll("[data-ckt]").forEach(i2 => {
+      const [a, b2] = i2.dataset.ckt.split("."); m2.sections[+a].items[+b2].t = i2.value;
+    });
+  };
+  body.querySelectorAll("[data-ckmode]").forEach(b => b.onclick = () => { sync(); fsCkMode = b.dataset.ckmode; fsCkEditRender(); });
+  body.querySelectorAll("[data-cksup]").forEach(b => b.onclick = () => {
+    sync(); const i = +b.dataset.cksup, s2 = cl.modes[fsCkMode].sections;
+    s2.splice(i - 1, 0, s2.splice(i, 1)[0]); fsCkEditRender();
+  });
+  body.querySelectorAll("[data-cksdn]").forEach(b => b.onclick = () => {
+    sync(); const i = +b.dataset.cksdn, s2 = cl.modes[fsCkMode].sections;
+    s2.splice(i + 1, 0, s2.splice(i, 1)[0]); fsCkEditRender();
+  });
+  body.querySelectorAll("[data-cksdel]").forEach(b => b.onclick = () => {
+    sync(); const i = +b.dataset.cksdel, s2 = cl.modes[fsCkMode].sections;
+    if (!confirm('Delete the section "' + (s2[i].title || "") + '" and its ' + (s2[i].items || []).length + ' items?')) return;
+    s2.splice(i, 1); fsCkEditRender();
+  });
+  body.querySelectorAll("[data-ckidel]").forEach(b => b.onclick = () => {
+    sync(); const [a, c] = b.dataset.ckidel.split(".");
+    const its = cl.modes[fsCkMode].sections[+a].items;
+    if (!confirm("Delete item " + (its[+c].k || "") + "?")) return;
+    its.splice(+c, 1); fsCkEditRender();
+  });
+  body.querySelectorAll("[data-ckiadd]").forEach(b => b.onclick = () => {
+    sync(); const sec = cl.modes[fsCkMode].sections[+b.dataset.ckiadd];
+    sec.items = sec.items || []; sec.items.push({ k: "", t: "" }); fsCkEditRender();
+  });
+  const sa = document.getElementById("fsCkSecAdd");
+  if (sa) sa.onclick = () => {
+    sync(); const m2 = cl.modes[fsCkMode];
+    m2.sections = m2.sections || []; m2.sections.push({ title: "New section", items: [] }); fsCkEditRender();
+  };
+  document.getElementById("fsCkRevert").onclick = () => {
+    if (!confirm("Throw away the checklist edits and go back to the loaded profile's?")) return;
+    st.checklists = null; fsCkEditOpen();
+  };
+  document.getElementById("fsCkDone").onclick = () => {
+    sync();
+    document.getElementById("fsCkModal").classList.remove("show");
+    fsBuilderRender();
+  };
+}
+/* ================= end SparkCommand block ============================================= */
+
+/* ================= SparkCommand builder - VENDOR ONLY (part 2) ========================
+   Lifts out with part 1 when the standalone admin app exists. Do not put client-side
+   runtime code between these markers. */
+function fsBldGroups() {
+  return [
+    ["Test cycles", "cycles", [["monthly", "Monthly"], ["sixMonthly", "6 monthly"], ["annual", "Annual"], ["fiveYearly", "5 yearly"], ["fullFunction", "Full Function"]]],
+    ["General", "", [["planner", "Planner"], ["dashboard", "Dashboard (admin)"]]],
+    ["Sections", "sections", [["service", "Service clients (register)"], ["projects", "Projects (job numbers)"]]],
+    ["Workspace tools", "wsTools", (typeof TOOLS_TAB !== "undefined" ? TOOLS_TAB : []).map(t => [t.id, t.label])],
+    ["Resources tools", "resTools", FS_BLD_RES]
+  ];
+}
+let fsBld = null;
+function fsBldDefault() {
+  const m = {};
+  fsBldGroups().forEach(([, gk, items]) => items.forEach(([k]) => { m[(gk ? gk + "." : "") + k] = true; }));
+  const g = {};
+  fsBldGroups().forEach(([, gk, items]) => items.forEach(([k]) => { g[(gk ? gk + "." : "") + k] = true; }));
+  return { name: "", users: [], modules: m, grants: g, equipment: null, equipmentItems: null, checklists: null,
+           access: { mode: "none", start: "", expiry: "", user: "", pass: "", passHash: "", contact: "" }, incl: true };
+}
+/* users textarea <-> list. Format "Name, role" per line; role defaults to tech.
+   passHash/status survive a rename-free edit by lowercase name match. */
+function fsBldUsersText(users) {
+  return (users || []).map(u => u.name + (u.role && u.role !== "tech" ? ", " + u.role : "")).join("\n");
+}
+function fsBldUsersParse(txt, prev) {
+  const keep = {};
+  (prev || []).forEach(u => { if (u && u.name) keep[u.name.toLowerCase()] = u; });
+  const out = [];
+  String(txt || "").split("\n").forEach(ln => {
+    const parts = ln.split(",");
+    const name = (parts[0] || "").trim();
+    if (!name) return;
+    let role = (parts[1] || "").trim().toLowerCase();
+    if (!/^(admin|office|tech)$/.test(role)) role = "tech";
+    const old = keep[name.toLowerCase()] || {};
+    out.push({ name: name, role: role, passHash: old.passHash || "", status: old.status || "active" });
+  });
+  return out;
+}
+const FS_BLD_PRESETS = {
+  full: () => {},
+  service: st => { st.modules["sections.projects"] = false; },
+  projects: st => {
+    st.modules["sections.service"] = false;
+    ["cycles.monthly", "cycles.sixMonthly", "cycles.annual", "cycles.fiveYearly", "cycles.fullFunction", "planner", "dashboard"].forEach(k => st.modules[k] = false);
+  }
+};
+function fsBuilderModalEl() {
+  let m = document.getElementById("fsBuilderModal");
+  if (m) return m;
+  m = document.createElement("div");
+  m.className = "modal"; m.id = "fsBuilderModal"; m.style.zIndex = "121";
+  m.innerHTML = '<div class="modalbox" style="max-width:560px;width:95vw;max-height:86vh;overflow-y:auto;text-align:left"><div id="fsBldBody"></div></div>';
+  document.body.appendChild(m);
+  return m;
+}
+function fsBuilderOpen() {
+  fsBld = fsBld || fsBldDefault();
+  fsBuilderModalEl().classList.add("show");
+  fsBuilderRender();
+}
+function fsBuilderRender() {
+  const st = fsBld;
+  const body = document.getElementById("fsBldBody");
+  let h = '<h3 style="margin-bottom:2px">&#128736; Client profile builder</h3>';
+  h += '<div style="font-size:11.5px;color:#999;margin-bottom:10px">Builds a profile FILE for a client &mdash; nothing here changes THIS app. The login/expiry gate is client-side only: fine for trials, it is not real licensing.</div>';
+  h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:12.5px;font-weight:700">Preset:</span>';
+  [["full", "Full"], ["service", "Service only"], ["projects", "Projects only"]].forEach(([k, lbl]) => {
+    h += '<button class="btn" data-bldpre="' + k + '" style="padding:6px 12px;font-size:12.5px">' + lbl + '</button>';
+  });
+  h += '<span style="font-size:11px;color:#999">then tweak anything below</span></div>';
+  h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">Client / company name</div><input id="fsBldName" style="width:100%;padding:9px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8" value="' + fsEsc(st.name).replace(/"/g, "&quot;") + '"></div>';
+  h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">Users <span style="color:#999;font-weight:400">(one per line: Name, role &mdash; optional)</span></div>' +
+       '<textarea id="fsBldUsers" rows="3" style="width:100%;box-sizing:border-box;padding:9px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8;font-size:13px;resize:vertical" placeholder="e.g.&#10;J. Citizen, admin&#10;A. Nother, office&#10;B. Field">' + fsEsc(fsBldUsersText(st.users)) + '</textarea>' +
+       '<div style="font-size:11px;color:#999;margin-top:2px">Roles: <b>admin</b> (everything, manages users), <b>office</b> (dashboard, quotes, pricebook), <b>tech</b> (field work &mdash; the default). Each device asks "who is using this device?" and stamps that name on saves, tests and defects. The client\'s admin can edit users and set passwords later on their dashboard. Soft enforcement &mdash; real accounts come with the backend.</div></div>';
+  fsBldGroups().forEach(([title, gk, items], gi) => {
+    h += '<div style="font-size:12px;font-weight:700;color:#7ddb8f;margin:10px 0 5px">' + title.toUpperCase() + '</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px">';
+    items.forEach(([k, lbl]) => {
+      const path = (gk ? gk + "." : "") + k;
+      const gOn = st.grants ? st.grants[path] !== false : true;
+      h += '<div style="display:flex;align-items:center;gap:5px;font-size:12.5px">' +
+           '<label title="Give this to the client at all. Unticked = they never see it." style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" data-bldgrant="' + path + '"' + (gOn ? " checked" : "") + '><span style="color:#7ddb8f">give</span></label>' +
+           '<label title="On by default. They can change this in their own editor." style="display:flex;align-items:center;gap:4px;cursor:pointer;' + (gOn ? '' : 'opacity:.35;pointer-events:none') + '"><input type="checkbox" data-bldmod="' + path + '"' + (st.modules[path] !== false ? " checked" : "") + '><span style="color:#888">on</span></label>' +
+           '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + fsEsc(lbl) + '</span></div>';
+    });
+    h += '</div>';
+  });
+  const a = st.access;
+  h += '<div style="font-size:12px;font-weight:700;color:#7ddb8f;margin:12px 0 5px">ACCESS</div>';
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px"><select id="fsBldMode" style="padding:8px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8">' +
+    [["none", "No gate (open)"], ["trial", "Trial"], ["subscription", "Subscription"], ["perpetual", "Perpetual"]].map(([k, l]) => '<option value="' + k + '"' + (a.mode === k ? " selected" : "") + '>' + l + '</option>').join("") + '</select>';
+  if (a.mode === "trial") h += '<button class="btn" id="fsBld7" style="padding:6px 10px;font-size:12px">7 days</button><button class="btn" id="fsBld14" style="padding:6px 10px;font-size:12px">14 days</button>';
+  h += '</div>';
+  if (a.mode !== "none") {
+    h += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">';
+    h += '<div><div style="font-size:11px;color:#999">Start</div><input type="date" id="fsBldStart" value="' + fsEsc(a.start) + '" style="width:100%;padding:8px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8"></div>';
+    h += '<div><div style="font-size:11px;color:#999">Expiry ' + (a.mode === "perpetual" ? "(leave blank)" : "") + '</div><input type="date" id="fsBldExp" value="' + fsEsc(a.expiry) + '" style="width:100%;padding:8px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8"></div>';
+    h += '<div><div style="font-size:11px;color:#999">Login business name</div><input id="fsBldUser" value="' + fsEsc(a.user).replace(/"/g, "&quot;") + '" style="width:100%;padding:8px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8"></div>';
+    h += '<div><div style="font-size:11px;color:#999">Password ' + (a.passHash ? "(blank = keep current)" : "") + '</div><input id="fsBldPass" value="' + fsEsc(a.pass).replace(/"/g, "&quot;") + '" style="width:100%;padding:8px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8"></div>';
+    h += '</div><div style="margin-bottom:8px"><div style="font-size:11px;color:#999">Contact line shown on the lockout screen</div><input id="fsBldContact" value="' + fsEsc(a.contact).replace(/"/g, "&quot;") + '" placeholder="e.g. Call Reece on 04xx xxx xxx to keep going" style="width:100%;padding:8px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8"></div>';
+  }
+  h += '<label style="display:flex;align-items:center;gap:7px;font-size:12.5px;margin:8px 0;cursor:pointer"><input type="checkbox" id="fsBldIncl"' + (st.incl ? " checked" : "") + '> Include the currently loaded profile’s equipment fields &amp; checklists' + (fsProfile ? "" : " (no profile loaded — defaults will apply)") + '</label>';
+  h += '<div style="font-size:12px;font-weight:700;color:#7ddb8f;margin:12px 0 3px">EQUIPMENT LIBRARIES</div>';
+  h += '<div style="font-size:11.5px;color:#999;margin-bottom:6px">Tick the disciplines this client works in. Fields shared by two libraries (Exit lights, Emergency lights, Other equipment) collapse to one row. Leave all unticked to inherit the loaded profile exactly as before.</div>';
+  h += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:4px 10px;margin-bottom:6px">';
+  FS_EQUIP_LIBS.concat(st.libExtra || []).forEach(lib => {
+    const on = (st.libs || []).indexOf(lib.key) >= 0;
+    h += '<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;cursor:pointer"><input type="checkbox" data-bldlib="' + fsEsc(lib.key) + '"' + (on ? " checked" : "") + '>' +
+         '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + fsEsc(lib.label) + (lib.custom ? ' <span style="color:#7ddb8f">(loaded)</span>' : '') + '</span>' +
+         '<span style="color:#777;font-size:11px">' + (lib.fields || []).length + '</span></label>';
+  });
+  h += '</div>';
+  if ((st.libs || []).length) {
+    const mg = fsLibMerge(st.libs, st.libExtra);
+    h += '<div style="font-size:11.5px;color:#7ddb8f;margin-bottom:6px">' + mg.equipment.length + ' fields after merge \u00b7 ' + mg.equipmentItems.length + ' with typed quantities</div>';
+  }
+  h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px">' +
+       '<button class="btn" id="fsBldLibLoad" style="font-size:12.5px">&#128194; Load a library file&hellip;</button>' +
+       '<button class="btn" id="fsBldEqBtn">&#129520; Equipment fields' + (st.equipment ? ' <span style="color:#7ddb8f">(' + st.equipment.length + (st.eqEdited ? ' — edited' : ' — from libraries') + ')</span>' : '') + '</button>' +
+       '<button class="btn" id="fsBldCkBtn">&#128203; Checklists' + (st.checklists ? ' <span style="color:#7ddb8f">(edited)</span>' : '') + '</button></div>';
+  h += '<input type="file" id="fsBldLibFile" accept=".json,application/json" style="display:none">';
+  h += '<div class="row" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="fsBldLoad">&#128194; Load profile to edit</button><span style="flex:1"></span><button class="btn" id="fsBldClose">Close</button><button class="btn" id="fsBldExport" style="background:#1b8a3f;border-color:#1b8a3f;color:#fff;font-weight:700">&#128190; Export profile file</button></div>';
+  h += '<input type="file" id="fsBldFile" accept=".json,application/json" style="display:none">';
+  body.innerHTML = h;
+
+  /* wiring */
+  body.querySelectorAll("[data-bldlib]").forEach(cb => cb.onchange = () => {
+    syncTop();
+    const key = cb.dataset.bldlib;
+    st.libs = st.libs || [];
+    const i = st.libs.indexOf(key);
+    if (st.eqEdited && !confirm("Changing the libraries rebuilds the equipment list from the ticked libraries.\n\nYour hand edits to that list will be discarded.\n\nContinue?")) {
+      fsBuilderRender(); return;
+    }
+    if (cb.checked && i < 0) st.libs.push(key);
+    if (!cb.checked && i >= 0) st.libs.splice(i, 1);
+    if (st.libs.length) {
+      const mg = fsLibMerge(st.libs, st.libExtra);
+      st.equipment = mg.equipment; st.equipmentItems = mg.equipmentItems;
+    } else {
+      st.equipment = null; st.equipmentItems = null;   /* back to inheriting the loaded profile */
+    }
+    st.eqEdited = false;
+    fsBuilderRender();
+  });
+  const libLoad = document.getElementById("fsBldLibLoad");
+  if (libLoad) libLoad.onclick = () => { syncTop(); document.getElementById("fsBldLibFile").click(); };
+  const libFile = document.getElementById("fsBldLibFile");
+  if (libFile) libFile.onchange = e => {
+    const f = (e.target.files || [])[0];
+    e.target.value = "";
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      let obj = null;
+      try { obj = JSON.parse(r.result); } catch (err) { alert("Couldn't read that file."); return; }
+      if (obj && obj.app === "firespark-profile") { alert("That's a company PROFILE file, not an equipment library.\n\nUse \ud83d\udcc2 Load profile to edit instead."); return; }
+      if (obj && (obj.app === "firespark-register" || obj.app === "firespark-bundle" || obj.clients)) { alert("That's a REGISTER file, not an equipment library."); return; }
+      const lib = fsLibFromFile(obj);
+      if (!lib) { alert("That doesn't look like an equipment library file.\n\nIt needs \"app\": \"" + FS_LIB_APP + "\" and an \"equipment\" list of field names."); return; }
+      st.libExtra = (st.libExtra || []).filter(x => x.key !== lib.key);
+      st.libExtra.push(lib);
+      st.libs = st.libs || [];
+      if (st.libs.indexOf(lib.key) < 0) st.libs.push(lib.key);
+      const mg = fsLibMerge(st.libs, st.libExtra);
+      st.equipment = mg.equipment; st.equipmentItems = mg.equipmentItems; st.eqEdited = false;
+      fsBuilderRender();
+      alert("Library loaded \u2713 \u2014 " + lib.label + " (" + lib.fields.length + " fields).");
+    };
+    r.readAsText(f);
+  };
+  const eqb = document.getElementById("fsBldEqBtn");
+  if (eqb) eqb.onclick = () => { syncTop(); fsEqEditOpen(); };
+  const ckb = document.getElementById("fsBldCkBtn");
+  if (ckb) ckb.onclick = () => { syncTop(); fsCkEditOpen(); };
+  body.querySelectorAll("[data-bldgrant]").forEach(cb => cb.onchange = () => {
+    syncTop();   /* AC fix: was missing — a give-tick toggle wiped the typed name/users/access */
+    st.grants = st.grants || {};
+    st.grants[cb.dataset.bldgrant] = cb.checked;
+    fsBuilderRender();
+  });
+  body.querySelectorAll("[data-bldpre]").forEach(b => b.onclick = () => {
+    fsBld = fsBldDefault();
+    fsBld.name = document.getElementById("fsBldName").value;
+    const uPre = document.getElementById("fsBldUsers");
+    fsBld.users = uPre ? fsBldUsersParse(uPre.value, st.users) : [];
+    fsBld.access = st.access;
+    fsBld.incl = document.getElementById("fsBldIncl").checked;
+    (FS_BLD_PRESETS[b.dataset.bldpre] || (() => {}))(fsBld);
+    fsBuilderRender();
+  });
+  const syncTop = () => {
+    st.name = document.getElementById("fsBldName").value;
+    const uEl = document.getElementById("fsBldUsers");
+    if (uEl) st.users = fsBldUsersParse(uEl.value, st.users);
+    st.incl = document.getElementById("fsBldIncl").checked;
+    body.querySelectorAll("[data-bldmod]").forEach(cb => { st.modules[cb.dataset.bldmod] = cb.checked; });
+    const gm = document.getElementById("fsBldMode");
+    if (gm) st.access.mode = gm.value;
+    ["Start", "Exp", "User", "Pass", "Contact"].forEach(f => {
+      const el = document.getElementById("fsBld" + f);
+      if (el) st.access[{ Start: "start", Exp: "expiry", User: "user", Pass: "pass", Contact: "contact" }[f]] = el.value;
+    });
+  };
+  document.getElementById("fsBldMode").onchange = () => { syncTop(); fsBuilderRender(); };
+  const d7 = document.getElementById("fsBld7"), d14 = document.getElementById("fsBld14");
+  const setDays = n => {
+    syncTop();
+    const t = new Date(); st.access.start = t.toISOString().slice(0, 10);
+    t.setDate(t.getDate() + n); st.access.expiry = t.toISOString().slice(0, 10);
+    fsBuilderRender();
+  };
+  if (d7) d7.onclick = () => setDays(7);
+  if (d14) d14.onclick = () => setDays(14);
+  document.getElementById("fsBldClose").onclick = () => { syncTop(); document.getElementById("fsBuilderModal").classList.remove("show"); };
+  document.getElementById("fsBldLoad").onclick = () => document.getElementById("fsBldFile").click();
+  document.getElementById("fsBldFile").onchange = e => {
+    const f = (e.target.files || [])[0];
+    e.target.value = "";
+    if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      try {
+        const obj = JSON.parse(r.result);
+        if (!obj || obj.app !== "firespark-profile") { alert("That isn't a profile file for Arc Adapt / EverDue."); return; }
+        const st2 = fsBldDefault();
+        st2.equipment = null; st2.equipmentItems = null; st2.checklists = null;   /* start from the file, not the last edit */
+        st2.libs = Array.isArray(obj.libraries) ? obj.libraries.slice() : []; st2.libExtra = []; st2.eqEdited = false;
+        if (st2.libs.length) {
+          const mg0 = fsLibMerge(st2.libs, null);
+          if (mg0.equipment.length) { st2.equipment = mg0.equipment; st2.equipmentItems = mg0.equipmentItems; }
+        }
+        st2.name = (obj.company && obj.company.name) || "";
+        st2.users = Array.isArray(obj.users)
+          ? obj.users.map(u => ({ name: String((u && u.name) || "").trim(), role: (u && /^(admin|office|tech)$/.test(u.role)) ? u.role : "tech", passHash: (u && u.passHash) || "", status: (u && u.status) === "disabled" ? "disabled" : "active" })).filter(u => u.name)
+          : (Array.isArray(obj.techs) ? obj.techs.map(s => ({ name: String(s || "").trim(), role: "tech", passHash: "", status: "active" })).filter(u => u.name) : []);
+        if (obj.modules) {
+          const flat = (o, pre) => Object.entries(o).forEach(([k, v]) => {
+            if (v && typeof v === "object") flat(v, pre + k + ".");
+            else st2.modules[pre + k] = v !== false;
+          });
+          flat(obj.modules, "");
+        }
+        if (obj.grants) {   /* AC fix: grants were dropped on load — re-export silently re-granted everything */
+          const flatG = (o, pre) => Object.entries(o).forEach(([k, v]) => {
+            if (v && typeof v === "object") flatG(v, pre + k + ".");
+            else st2.grants[pre + k] = v !== false;
+          });
+          flatG(obj.grants, "");
+        }
+        if (obj.access) st2.access = { mode: obj.access.mode || "none", start: obj.access.start || "", expiry: obj.access.expiry || "", user: obj.access.user || "", pass: "", passHash: obj.access.passHash || "", contact: obj.access.contact || "" };
+        st2._src = obj;
+        fsBld = st2;
+        fsBuilderRender();
+      } catch (err) { alert("Couldn't read that file."); }
+    };
+    r.readAsText(f);
+  };
+  document.getElementById("fsBldExport").onclick = async () => {
+    syncTop();
+    const name = st.name.trim();
+    if (!name) { alert("Give the profile a client / company name first."); return; }
+    const modules = { cycles: {}, sections: {}, wsTools: {}, resTools: {} };
+    Object.entries(st.modules).forEach(([path, v]) => {
+      const parts = path.split(".");
+      if (parts.length === 1) modules[parts[0]] = !!v;
+      else { modules[parts[0]] = modules[parts[0]] || {}; modules[parts[0]][parts[1]] = !!v; }
+    });
+    const src = st._src || {};
+    const base = st.incl && fsProfile ? fsProfile : (st.incl ? src : {});
+    const grants = {};
+    Object.entries(st.grants || {}).forEach(([path, v]) => {
+      const parts = path.split(".");
+      if (parts.length === 1) grants[parts[0]] = !!v;
+      else { grants[parts[0]] = grants[parts[0]] || {}; grants[parts[0]][parts[1]] = !!v; }
+    });
+    if (!st.incl && fsProfile && ((fsProfile.checklists && fsProfile.checklists.modes) || (fsProfile.equipment || []).length)) {
+      if (!confirm("WARNING — the equipment fields and test checklists box is UNTICKED.\n\nThe exported profile will contain NO equipment fields and NO checklists. Anyone loading it loses them.\n\nExport anyway?")) return;
+    }
+    const out = { app: "firespark-profile", version: 2, created: new Date().toISOString().slice(0, 10), company: { name: name }, modules: modules, grants: grants };
+    if ((st.users || []).length) {
+      /* a user list with no active admin locks the client out of managing users — promote the first */
+      if (!st.users.some(u => u.role === "admin" && u.status !== "disabled")) {
+        st.users[0].role = "admin";
+        alert("No admin in the user list — " + st.users[0].name + " (first listed) was made Admin so the client can manage their own users.");
+      }
+      out.users = st.users.map(u => ({ name: u.name, role: u.role, passHash: u.passHash || "", status: u.status || "active" }));
+    }
+    const eq = st.equipment || base.equipment;
+    const eqi = st.equipmentItems || base.equipmentItems;
+    const ckl = st.checklists || base.checklists;
+    if (st.libs && st.libs.length) out.libraries = st.libs.slice();
+    if (eq && eq.length) out.equipment = eq;
+    if (eqi && eqi.length) out.equipmentItems = eqi;
+    if (ckl && ckl.modes) out.checklists = ckl;
+    if (st.access.mode !== "none") {
+      const a = st.access;
+      let passHash = a.passHash || "";
+      if (a.pass) passHash = await fsSha256(a.pass);
+      if (a.user && !passHash) { alert("Set a password for the login (or clear the business name to skip the login gate)."); return; }
+      out.access = { mode: a.mode, start: a.start || "", expiry: a.expiry || "", user: a.user || "", passHash: passHash, contact: a.contact || "" };
+      if (a.mode === "trial" && !a.expiry) { alert("A trial needs an expiry date — use the 7 / 14 day buttons or pick one."); return; }
+    }
+    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "client";
+    deliverFile(new Blob([JSON.stringify(out)], { type: "application/json" }),
+      "arc-profile-" + slug + "-" + new Date().toISOString().slice(0, 10) + ".json", "application/json");
+  };
+}
+/* ================= end SparkCommand block (part 2) ===================================== */
+
+document.getElementById("acOpen").onclick = fsSparkOpen;
+if ("serviceWorker" in navigator) { try { navigator.serviceWorker.register("sw.js"); } catch (e) {} }
+</script>
+</body>
+</html>
