@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v6";
+const FS_BUILD = "acmd-v7";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (FireSpark V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.04 beta</span>
+  <span class="badge">V0.05 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v6";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.04 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.05 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -74,6 +74,153 @@ async function fsSha256(t) {
   const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(String(t)));
   return Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2, "0")).join("");
 }
+
+/* ===== Passwords: hashing, and a box to type one into ======================
+   V0.05, 31 Jul 2026.
+
+   THE HASH. Everything before this pass used fsSha256 — one pass, no salt. Two
+   users who both chose "fire" had the same stored string, and any rainbow table
+   turns that string back into "fire" in no time. New passwords are PBKDF2-
+   SHA-256, 210,000 iterations, with 16 random bytes of salt each:
+
+       pbkdf2$210000$<32 hex chars of salt>$<64 hex chars of hash>
+
+   Old 64-hex values still verify — see fsPassVerify — and get rewritten in this
+   format the first time their owner successfully signs in. Nobody is locked out
+   and nobody is left on the weak hash.
+
+   210,000 is chosen to cost roughly a quarter of a second on the oldest tablet
+   these apps run on. Higher is better against an offline attack; slower than
+   about half a second reads as a broken login.
+
+   THE BOX. fsAskPass is a real modal with a masked field, because window.prompt
+   shows the password in clear text under a browser banner. Same objection Reece
+   raised about the list pickers, and worse here — this one is a password.
+   ========================================================================== */
+const FS_PBKDF2_ITERS = 210000;
+const FS_PASS_MIN = { admin: 8, office: 8, tech: 4 };
+
+function fsHexOf(buf) {
+  return Array.from(new Uint8Array(buf)).map(x => x.toString(16).padStart(2, "0")).join("");
+}
+function fsRandHex(nBytes) {
+  const a = new Uint8Array(nBytes);
+  crypto.getRandomValues(a);
+  return Array.from(a).map(x => x.toString(16).padStart(2, "0")).join("");
+}
+async function fsPbkdf2(pw, saltHex, iters) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(String(pw)), "PBKDF2", false, ["deriveBits"]);
+  const salt = new Uint8Array((String(saltHex).match(/../g) || []).map(h => parseInt(h, 16)));
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt: salt, iterations: iters, hash: "SHA-256" }, key, 256);
+  return fsHexOf(bits);
+}
+async function fsPassMake(pw) {
+  const salt = fsRandHex(16);
+  return "pbkdf2$" + FS_PBKDF2_ITERS + "$" + salt + "$" + (await fsPbkdf2(pw, salt, FS_PBKDF2_ITERS));
+}
+/* Constant-time-ish compare. Both sides are hex of a fixed length, so this is
+   belt and braces rather than a real side channel — but it costs nothing. */
+function fsHashEq(a, b) {
+  a = String(a); b = String(b);
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+function fsPassIsLegacy(stored) { return /^[0-9a-f]{64}$/.test(String(stored || "")); }
+async function fsPassVerify(pw, stored) {
+  const s = String(stored || "");
+  if (!s) return false;
+  if (s.indexOf("pbkdf2$") === 0) {
+    const p = s.split("$");
+    if (p.length !== 4) return false;
+    const iters = parseInt(p[1], 10);
+    if (!(iters >= 1000)) return false;                 /* refuse a tampered-down cost */
+    if (!/^[0-9a-f]+$/.test(p[2]) || !/^[0-9a-f]{64}$/.test(p[3])) return false;
+    return fsHashEq(await fsPbkdf2(pw, p[2], iters), p[3]);
+  }
+  if (fsPassIsLegacy(s)) return fsHashEq(await fsSha256(pw), s);   /* V1.29 and earlier */
+  return false;
+}
+/* Quietly re-hash a legacy password the moment its owner proves they know it. */
+async function fsPassUpgrade(name, pw) {
+  try {
+    if (typeof fsProfile === "undefined" || !fsProfile || !Array.isArray(fsProfile.users)) return false;
+    const u = fsProfile.users.find(x => String((x && x.name) || "").toLowerCase() === String(name || "").toLowerCase());
+    if (!u || !fsPassIsLegacy(u.passHash)) return false;
+    u.passHash = await fsPassMake(pw);
+    try { idbPut("fsProfile", fsProfile).catch(() => {}); } catch (e) {}
+    if (typeof fsRegister !== "undefined" && fsRegister) { fsRegister.profile = fsProfile; fsMarkDirty(); }
+    try { fsActLog("Password upgraded", String(name) + " — unsalted hash replaced"); } catch (e) {}
+    return true;
+  } catch (e) { return false; }
+}
+
+/* fsAskPass(title, opts) -> Promise<string|null>.  null means cancelled.
+   opts: { note, confirm:true (ask twice), min:N, okLabel, sub } */
+function fsAskPass(title, opts) {
+  opts = opts || {};
+  const min = opts.min || 0;
+  return new Promise(resolve => {
+    const d = document.createElement("div");
+    d.className = "modal show";
+    d.style.zIndex = "160";                       /* above fsPick (140) and the login (150) */
+    d.innerHTML =
+      '<div class="modalbox" style="max-width:400px;width:92vw;text-align:left">' +
+        '<h3 class="fsApTitle" style="margin-bottom:4px"></h3>' +
+        '<div class="fsApSub" style="font-size:12px;color:#9aa7ae;margin-bottom:10px;display:none"></div>' +
+        '<div style="display:flex;gap:6px;margin-bottom:8px">' +
+          '<input type="password" class="fsApPass" autocomplete="off" autocapitalize="off" spellcheck="false" ' +
+                 'placeholder="Password" style="flex:1;min-width:0;padding:11px;border-radius:8px;border:1px solid #4a5057;background:#1a1d21;color:#eee;font-size:15px">' +
+          '<button type="button" class="btn fsApEye" title="Show or hide" style="padding:6px 10px">&#128065;</button>' +
+        '</div>' +
+        '<input type="password" class="fsApPass2" autocomplete="off" autocapitalize="off" spellcheck="false" ' +
+               'placeholder="Type it again" style="width:100%;box-sizing:border-box;padding:11px;border-radius:8px;border:1px solid #4a5057;background:#1a1d21;color:#eee;font-size:15px;margin-bottom:8px;display:none">' +
+        '<div class="fsApNote" style="font-size:11.5px;color:#8b979d;margin-bottom:8px;display:none"></div>' +
+        '<div class="fsApMsg" style="min-height:17px;font-size:12.5px;color:#ff8a80;margin-bottom:8px"></div>' +
+        '<div class="row" style="display:flex;gap:8px"><span style="flex:1"></span>' +
+          '<button class="btn fsApCancel">Cancel</button>' +
+          '<button class="btn fsApOk" style="background:var(--fs-accent,#2596ab);border-color:var(--fs-accent,#2596ab);color:#08191d;font-weight:700"></button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(d);
+
+    d.querySelector(".fsApTitle").textContent = title || "Password";
+    d.querySelector(".fsApOk").textContent = opts.okLabel || "OK";
+    if (opts.sub) { const s = d.querySelector(".fsApSub"); s.textContent = opts.sub; s.style.display = "block"; }
+    if (opts.note) { const n = d.querySelector(".fsApNote"); n.textContent = opts.note; n.style.display = "block"; }
+    const p1 = d.querySelector(".fsApPass"), p2 = d.querySelector(".fsApPass2");
+    if (opts.confirm) p2.style.display = "block";
+    const msg = d.querySelector(".fsApMsg");
+
+    const done = v => { document.removeEventListener("keydown", onKey, true); d.remove(); resolve(v); };
+    const submit = () => {
+      const a = p1.value || "";
+      if (min && a.length < min) { msg.textContent = "Use at least " + min + " characters."; return; }
+      if (!a) { msg.textContent = "Type a password."; return; }
+      if (opts.confirm && a !== (p2.value || "")) { msg.textContent = "The two don't match."; return; }
+      done(a);
+    };
+    const onKey = e => { if (e.key === "Escape") { e.preventDefault(); done(null); } };
+    document.addEventListener("keydown", onKey, true);
+
+    d.querySelector(".fsApEye").onclick = () => {
+      const t = p1.type === "password" ? "text" : "password";
+      p1.type = t; p2.type = t;
+    };
+    [p1, p2].forEach(el => el.addEventListener("keydown", e => {
+      if (e.key === "Enter") { e.preventDefault(); submit(); }
+    }));
+    d.querySelector(".fsApOk").onclick = submit;
+    d.querySelector(".fsApCancel").onclick = () => done(null);
+    d.onclick = e => { if (e.target === d) done(null); };
+    setTimeout(() => { try { p1.focus(); } catch (e) {} }, 40);
+  });
+}
+/* ===== end fsAskPass ====================================================== */
+
 function isMobileShare() {
   const ua = navigator.userAgent;
   const iOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
@@ -196,17 +343,19 @@ async function fsSparkGate() {
   try { stored = localStorage.getItem("fs-spark-pin") || ""; } catch (e) {}
   if (!stored) {
     if (!confirm("Arc Command is the profile builder — the vendor-side tool.\n\nNo passcode is set on this device yet. Set one now?")) return false;
-    const p1 = prompt("Choose an Arc Command passphrase (8+ characters — this device only):") || "";
-    if (p1.length < 8) { if (p1) alert("Too short — use at least 8 characters. Nothing was set."); return false; }
-    const p2 = prompt("Re-enter it:") || "";
-    if (p1 !== p2) { alert("They didn't match — nothing was set."); return false; }
-    try { localStorage.setItem("fs-spark-pin", await fsSha256(p1)); } catch (e) {}
+    const p1 = await fsAskPass("Choose an Arc Command passphrase", {
+      confirm: true, min: 8, okLabel: "Set passphrase",
+      note: "At least 8 characters. Stored on THIS device only — you will set it again on any other machine you build profiles from."
+    });
+    if (p1 === null) return false;
+    try { localStorage.setItem("fs-spark-pin", await fsPassMake(p1)); } catch (e) {}
     alert("Passcode set ✓ — it is stored on this device only. You'll need to set it again on any other device you build profiles from.");
     return true;
   }
-  const p = prompt("Arc Command passphrase:");
+  const p = await fsAskPass("Arc Command passphrase", { okLabel: "Unlock", sub: "Vendor-side profile builder" });
   if (p === null) return false;
-  if ((await fsSha256(p)) !== stored) { alert("Wrong passphrase."); return false; }
+  if (!(await fsPassVerify(p, stored))) { alert("Wrong passphrase."); return false; }
+  try { if (fsPassIsLegacy(stored)) localStorage.setItem("fs-spark-pin", await fsPassMake(p)); } catch (e) {}
   return true;
 }
 async function fsSparkOpen() { if (await fsSparkGate()) fsBuilderOpen(); }
@@ -721,7 +870,7 @@ function fsBuilderRender() {
     if (st.access.mode !== "none") {
       const a = st.access;
       let passHash = a.passHash || "";
-      if (a.pass) passHash = await fsSha256(a.pass);
+      if (a.pass) passHash = await fsPassMake(a.pass);   /* salted from V0.05 - the client's app must be V0.05+ */
       if (a.user && !passHash) { alert("Set a password for the login (or clear the business name to skip the login gate)."); return; }
       out.access = { mode: a.mode, start: a.start || "", expiry: a.expiry || "", user: a.user || "", passHash: passHash, contact: a.contact || "" };
       if (a.mode === "trial" && !a.expiry) { alert("A trial needs an expiry date — use the 7 / 14 day buttons or pick one."); return; }
