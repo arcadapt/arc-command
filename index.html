@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v8";
+const FS_BUILD = "acmd-v9";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (FireSpark V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.06 beta</span>
+  <span class="badge">V0.07 beta</span>
 </header>
 <main>
   <div class="card">
@@ -61,12 +61,12 @@ const FS_BUILD = "acmd-v8";
     <ul class="steps">
       <li>Build the profile here (grants = what they're issued; defaults = what starts on).</li>
       <li>Export — you get an <b>arc-profile-&lt;client&gt;.json</b> file.</li>
-      <li>The client loads it in Arc Adapt or EverDue (Dashboard &#8594; load profile). Their admin can then manage users and toggle features <i>within</i> what you granted.</li>
+      <li>The client loads it in Arc Adapt or EverDue (the setup button on first run, or &#127970; Profile). Their admin can then manage users and toggle features <i>within</i> what you granted.</li>
       <li>To change an existing client: load their profile file here, edit, re-export.</li>
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.06 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.07 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -576,7 +576,7 @@ function fsCkEditRender() {
 function fsBldGroups() {
   return [
     ["Test cycles", "cycles", [["monthly", "Monthly"], ["sixMonthly", "6 monthly"], ["annual", "Annual"], ["fiveYearly", "5 yearly"], ["fullFunction", "Full Function"]]],
-    ["General", "", [["planner", "Planner"], ["dashboard", "Dashboard (admin)"]]],
+    ["General", "", [["planner", "Planner"]]],
     ["Sections", "sections", [["service", "Service clients (register)"], ["projects", "Projects (job numbers)"]]],
     ["Workspace tools", "wsTools", (typeof TOOLS_TAB !== "undefined" ? TOOLS_TAB : []).map(t => [t.id, t.label])],
     ["Resources tools", "resTools", FS_BLD_RES]
@@ -593,6 +593,24 @@ function fsBldDefault() {
 }
 /* users textarea <-> list. Format "Name, role" per line; role defaults to tech.
    passHash/status survive a rename-free edit by lowercase name match. */
+
+/* Pass 5 Step 2: per-user rows replace the "Name, role" textarea. State lives on
+   st.users directly (oninput/onchange), so preset clicks and export cannot lose
+   typed rows. passHash/status ride along untouched — a rename keeps the hash. */
+function fsBldUserRows(st) {
+  const roles = [["admin", "Admin"], ["office", "Office"], ["tech", "Field"]];
+  let h = '<div id="fsBldUserRows" style="display:flex;flex-direction:column;gap:6px">';
+  (st.users || []).forEach((u, i) => {
+    h += '<div class="fsBldURow" data-i="' + i + '" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">' +
+      '<input class="fsBldUName" value="' + fsEsc(u.name).replace(/"/g, "&quot;") + '" placeholder="Name" style="flex:1;min-width:140px;padding:8px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8">' +
+      '<select class="fsBldURole" style="padding:8px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8">' +
+      roles.map(([k, l]) => '<option value="' + k + '"' + (u.role === k ? " selected" : "") + '>' + l + '</option>').join("") + '</select>' +
+      '<label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer" title="Unticked: cannot sign in, history kept"><input type="checkbox" class="fsBldUAct"' + (u.status !== "disabled" ? " checked" : "") + '>Active</label>' +
+      '<a class="fsBldUDel" title="Remove this user" style="cursor:pointer;color:#c66;padding:4px 8px;font-weight:700">&#10005;</a></div>';
+  });
+  h += '</div><button class="btn" id="fsBldUAdd" style="margin-top:6px;padding:6px 12px;font-size:12.5px">+ Add user</button>';
+  return h;
+}
 function fsBldUsersText(users) {
   return (users || []).map(u => u.name + (u.role && u.role !== "tech" ? ", " + u.role : "")).join("\n");
 }
@@ -616,7 +634,7 @@ const FS_BLD_PRESETS = {
   service: st => { st.modules["sections.projects"] = false; },
   projects: st => {
     st.modules["sections.service"] = false;
-    ["cycles.monthly", "cycles.sixMonthly", "cycles.annual", "cycles.fiveYearly", "cycles.fullFunction", "planner", "dashboard"].forEach(k => st.modules[k] = false);
+    ["cycles.monthly", "cycles.sixMonthly", "cycles.annual", "cycles.fiveYearly", "cycles.fullFunction", "planner"].forEach(k => st.modules[k] = false);
   }
 };
 function fsBuilderModalEl() {
@@ -644,9 +662,8 @@ function fsBuilderRender() {
   });
   h += '<span style="font-size:11px;color:#999">then tweak anything below</span></div>';
   h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">Client / company name</div><input id="fsBldName" style="width:100%;padding:9px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8" value="' + fsEsc(st.name).replace(/"/g, "&quot;") + '"></div>';
-  h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">Users <span style="color:#999;font-weight:400">(one per line: Name, role &mdash; optional)</span></div>' +
-       '<textarea id="fsBldUsers" rows="3" style="width:100%;box-sizing:border-box;padding:9px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8;font-size:13px;resize:vertical" placeholder="e.g.&#10;J. Citizen, admin&#10;A. Nother, office&#10;B. Field">' + fsEsc(fsBldUsersText(st.users)) + '</textarea>' +
-       '<div style="font-size:11px;color:#999;margin-top:2px">Roles: <b>admin</b> (everything, manages users), <b>office</b> (dashboard, quotes, pricebook), <b>tech</b> (field work &mdash; the default). Each device asks "who is using this device?" and stamps that name on saves, tests and defects. The client\'s admin can edit users and set passwords later on their dashboard. Soft enforcement &mdash; real accounts come with the backend.</div></div>';
+  h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">Users</div>' + fsBldUserRows(st) +
+       '<div style="font-size:11px;color:#999;margin-top:4px">The first user should be the client\'s <b>Admin</b>. Passwords are chosen by each person at their first sign-in on their own device &mdash; profiles never carry passwords. Every profile includes the Office screens for its Admin.</div></div>';
   fsBldGroups().forEach(([title, gk, items], gi) => {
     h += '<div style="font-size:12px;font-weight:700;color:#7ddb8f;margin:10px 0 5px">' + title.toUpperCase() + '</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px">';
     items.forEach(([k, lbl]) => {
@@ -698,6 +715,20 @@ function fsBuilderRender() {
   body.innerHTML = h;
 
   /* wiring */
+  body.querySelectorAll(".fsBldURow").forEach(r => {
+    const u = (st.users || [])[+r.dataset.i]; if (!u) return;
+    r.querySelector(".fsBldUName").oninput = e => { u.name = e.target.value.trim(); };
+    r.querySelector(".fsBldURole").onchange = e => { u.role = e.target.value; };
+    r.querySelector(".fsBldUAct").onchange = e => { u.status = e.target.checked ? "active" : "disabled"; };
+    r.querySelector(".fsBldUDel").onclick = () => { st.users.splice(+r.dataset.i, 1); fsBuilderRender(); };
+  });
+  const uAdd = document.getElementById("fsBldUAdd");
+  if (uAdd) uAdd.onclick = () => {
+    st.users = st.users || [];
+    /* first user defaults to the client's Admin — the whole point of the profile */
+    st.users.push({ name: "", role: st.users.length ? "tech" : "admin", passHash: "", status: "active" });
+    fsBuilderRender();
+  };
   body.querySelectorAll("[data-bldlib]").forEach(cb => cb.onchange = () => {
     syncTop();
     const key = cb.dataset.bldlib;
@@ -756,8 +787,7 @@ function fsBuilderRender() {
   body.querySelectorAll("[data-bldpre]").forEach(b => b.onclick = () => {
     fsBld = fsBldDefault();
     fsBld.name = document.getElementById("fsBldName").value;
-    const uPre = document.getElementById("fsBldUsers");
-    fsBld.users = uPre ? fsBldUsersParse(uPre.value, st.users) : [];
+    fsBld.users = st.users || [];
     fsBld.access = st.access;
     fsBld.incl = document.getElementById("fsBldIncl").checked;
     (FS_BLD_PRESETS[b.dataset.bldpre] || (() => {}))(fsBld);
@@ -765,8 +795,7 @@ function fsBuilderRender() {
   });
   const syncTop = () => {
     st.name = document.getElementById("fsBldName").value;
-    const uEl = document.getElementById("fsBldUsers");
-    if (uEl) st.users = fsBldUsersParse(uEl.value, st.users);
+    /* users: rows write st.users directly, nothing to pull from the DOM here */
     st.incl = document.getElementById("fsBldIncl").checked;
     body.querySelectorAll("[data-bldmod]").forEach(cb => { st.modules[cb.dataset.bldmod] = cb.checked; });
     const gm = document.getElementById("fsBldMode");
@@ -832,6 +861,7 @@ function fsBuilderRender() {
   };
   document.getElementById("fsBldExport").onclick = async () => {
     syncTop();
+    st.users = (st.users || []).filter(u => u.name && u.name.trim());
     const name = st.name.trim();
     if (!name) { alert("Give the profile a client / company name first."); return; }
     const modules = { cycles: {}, sections: {}, wsTools: {}, resTools: {} };
@@ -848,6 +878,11 @@ function fsBuilderRender() {
       if (parts.length === 1) grants[parts[0]] = !!v;
       else { grants[parts[0]] = grants[parts[0]] || {}; grants[parts[0]][parts[1]] = !!v; }
     });
+    /* Pass 5 Step 2 (Reece): every profile has the Office screens, always. The
+       Projects-preset trap — a profile with the dashboard silently off, an admin
+       who can't see their own users — dies here, not in a support call. */
+    grants.dashboard = true;
+    modules.dashboard = true;
     if (!st.incl && fsProfile && ((fsProfile.checklists && fsProfile.checklists.modes) || (fsProfile.equipment || []).length)) {
       if (!confirm("WARNING — the equipment fields and test checklists box is UNTICKED.\n\nThe exported profile will contain NO equipment fields and NO checklists. Anyone loading it loses them.\n\nExport anyway?")) return;
     }
