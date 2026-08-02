@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v10";
+const FS_BUILD = "acmd-v12";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (FireSpark V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.08 beta</span>
+  <span class="badge">V0.10 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v10";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.08 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.10 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -573,6 +573,75 @@ function fsCkEditRender() {
 /* ================= SparkCommand builder - VENDOR ONLY (part 2) ========================
    Lifts out with part 1 when the standalone admin app exists. Do not put client-side
    runtime code between these markers. */
+/* V0.10 — which zone each group belongs to. Reece asked for the workspace things
+   boxed together and separated from the site-register side. This table is the
+   ONLY place that mapping lives, so moving a group between zones is one word. */
+const AC_ZONE = {
+  "Test cycles": "register",
+  "General": "register",
+  "Sections": "register",
+  "Workspace tools": "workspace",
+  "Resources tools": "workspace"
+};
+const AC_ZONES = [
+  ["register", "SITE REGISTER", "#7ddb8f", "What the client services on site — cycles, the planner, and which sections of the register they get."],
+  ["workspace", "WORKSPACE", "#d4a537", "The tools that sit beside the register — the workspace tab and the resources library."]
+];
+/* V0.10 — a logo has to be SMALL before it is ever stored.
+   The register is a JSON file that gets emailed and synced; a logo rides inside
+   it as base64, which is +33% on the wire, and fsShareStrip does NOT remove it,
+   so it is in every share copy too. Reece's own arc-adapt-logo.png is 847KB —
+   ~1.1MB of base64 in every register file, forever, for a 26px-tall image.
+
+   PNG first because logos have transparency and a JPEG of a logo on the wrong
+   background looks broken. JPEG-on-white only as a fallback for something
+   photographic that a PNG cannot compress. Hard reject past the cap rather than
+   silently storing something enormous. */
+const AC_LOGO_MAX_PX = 512;
+const AC_LOGO_MAX_BYTES = 150000;
+function acLogoPrep(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) { reject(new Error("No file.")); return; }
+    if (!/^image\//.test(file.type)) { reject(new Error("That is not an image file.")); return; }
+    const rd = new FileReader();
+    rd.onerror = () => reject(new Error("Could not read that file."));
+    rd.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not decode that image."));
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, AC_LOGO_MAX_PX / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const cv = document.createElement("canvas");
+          cv.width = w; cv.height = h;
+          const cx = cv.getContext("2d");
+          cx.drawImage(img, 0, 0, w, h);
+          let out = cv.toDataURL("image/png");
+          if (out.length > AC_LOGO_MAX_BYTES) {
+            /* flatten onto white before the JPEG pass, or transparency turns black */
+            const cv2 = document.createElement("canvas");
+            cv2.width = w; cv2.height = h;
+            const c2 = cv2.getContext("2d");
+            c2.fillStyle = "#ffffff"; c2.fillRect(0, 0, w, h);
+            c2.drawImage(img, 0, 0, w, h);
+            out = cv2.toDataURL("image/jpeg", 0.82);
+          }
+          if (out.length > AC_LOGO_MAX_BYTES) {
+            reject(new Error("That logo is still " + Math.round(out.length / 1024) + "KB after resizing (the limit is "
+                             + Math.round(AC_LOGO_MAX_BYTES / 1024) + "KB).\n\nIt travels inside every register file and "
+                             + "every share copy, so it has to stay small. Try a simpler image, or crop out the background."));
+            return;
+          }
+          resolve({ data: out, w: w, h: h, kb: Math.round(out.length / 1024) });
+        } catch (e) { reject(new Error("Could not process that image: " + e.message)); }
+      };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(file);
+  });
+}
+
 function fsBldGroups() {
   return [
     ["Test cycles", "cycles", [["monthly", "Monthly"], ["sixMonthly", "6 monthly"], ["annual", "Annual"], ["fiveYearly", "5 yearly"], ["fullFunction", "Full Function"]]],
@@ -588,7 +657,7 @@ function fsBldDefault() {
   fsBldGroups().forEach(([, gk, items]) => items.forEach(([k]) => { m[(gk ? gk + "." : "") + k] = true; }));
   const g = {};
   fsBldGroups().forEach(([, gk, items]) => items.forEach(([k]) => { g[(gk ? gk + "." : "") + k] = true; }));
-  return { name: "", users: [], modules: m, grants: g, equipment: null, equipmentItems: null, checklists: null,
+  return { name: "", brandName: "", logo: "", users: [], modules: m, grants: g, equipment: null, equipmentItems: null, checklists: null,
            access: { mode: "none", start: "", expiry: "", user: "", pass: "", passHash: "", contact: "" }, incl: true };
 }
 /* users textarea <-> list. Format "Name, role" per line; role defaults to tech.
@@ -662,17 +731,51 @@ function fsBuilderRender() {
   });
   h += '<span style="font-size:11px;color:#999">then tweak anything below</span></div>';
   h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">Client / company name</div><input id="fsBldName" style="width:100%;padding:9px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8" value="' + fsEsc(st.name).replace(/"/g, "&quot;") + '"></div>';
+  /* V0.10 — branding. Optional and separate from the name above: that one is the
+     profile's name and owns the export filename, these two are what the client
+     sees. Leave both empty and every surface falls back to the name above,
+     exactly as before. */
+  h += '<div style="border:1px solid #3a3f46;border-radius:10px;padding:12px;margin-bottom:12px">';
+  h += '<div style="font-size:12px;font-weight:700;color:#7ddb8f;margin-bottom:2px">CLIENT BRANDING <span style="font-weight:400;color:#888">&mdash; optional</span></div>';
+  h += '<div style="font-size:11px;color:#999;margin-bottom:8px">Shown on their unlock screen and under the app name. Leave blank and both fall back to the name above.</div>';
+  h += '<div style="font-size:12px;font-weight:700;margin-bottom:3px">Business name (as displayed)</div>';
+  h += '<input id="fsBldBrand" placeholder="' + fsEsc(st.name || "leave blank to use the name above") + '" style="width:100%;padding:9px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8;margin-bottom:8px" value="' + fsEsc(st.brandName || "").replace(/"/g, "&quot;") + '">';
+  h += '<div style="font-size:12px;font-weight:700;margin-bottom:3px">Logo</div>';
+  h += '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">';
+  if (st.logo) {
+    h += '<div style="background:#1a1d21;border:1px solid #444;border-radius:8px;padding:6px;display:flex;align-items:center">'
+       + '<img src="' + fsEsc(st.logo) + '" alt="" style="max-height:44px;max-width:150px;object-fit:contain"></div>';
+    h += '<button class="btn" id="fsBldLogoDel" style="padding:6px 10px;font-size:12px">Remove</button>';
+    h += '<span style="font-size:11px;color:#888">' + Math.round(st.logo.length / 1024) + 'KB stored</span>';
+  }
+  h += '<button class="btn" id="fsBldLogoPick" style="padding:6px 10px;font-size:12px">' + (st.logo ? "Replace logo" : "Load a logo") + '</button>';
+  h += '<input type="file" id="fsBldLogoFile" accept="image/*" style="display:none">';
+  h += '</div>';
+  h += '<div style="font-size:11px;color:#999;margin-top:6px">Resized to ' + AC_LOGO_MAX_PX + 'px and capped at ' + Math.round(AC_LOGO_MAX_BYTES / 1024) + 'KB &mdash; it travels inside every register file and every copy they share.</div>';
+  h += '</div>';
   h += '<div style="margin-bottom:10px"><div style="font-size:12px;font-weight:700;margin-bottom:3px">Users</div>' + fsBldUserRows(st) +
        '<div style="font-size:11px;color:#999;margin-top:4px">The first user should be the client\'s <b>Admin</b>. Passwords are chosen by each person at their first sign-in on their own device &mdash; profiles never carry passwords. Every profile includes the Office screens for its Admin.</div></div>';
-  fsBldGroups().forEach(([title, gk, items], gi) => {
-    h += '<div style="font-size:12px;font-weight:700;color:#7ddb8f;margin:10px 0 5px">' + title.toUpperCase() + '</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px">';
-    items.forEach(([k, lbl]) => {
-      const path = (gk ? gk + "." : "") + k;
-      const gOn = st.grants ? st.grants[path] !== false : true;
-      h += '<div style="display:flex;align-items:center;gap:5px;font-size:12.5px">' +
-           '<label title="Give this to the client at all. Unticked = they never see it." style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" data-bldgrant="' + path + '"' + (gOn ? " checked" : "") + '><span style="color:#7ddb8f">give</span></label>' +
-           '<label title="On by default. They can change this in their own editor." style="display:flex;align-items:center;gap:4px;cursor:pointer;' + (gOn ? '' : 'opacity:.35;pointer-events:none') + '"><input type="checkbox" data-bldmod="' + path + '"' + (st.modules[path] !== false ? " checked" : "") + '><span style="color:#888">on</span></label>' +
-           '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + fsEsc(lbl) + '</span></div>';
+  /* V0.10 — zones. Same groups, same controls; they are just boxed by which side
+     of the app they belong to, because a flat list of five headers gave no clue
+     that half of them were workspace and half were register. */
+  const groups = fsBldGroups();
+  AC_ZONES.forEach(([zk, ztitle, zcol, zsub]) => {
+    const mine = groups.filter(g => (AC_ZONE[g[0]] || "register") === zk);
+    if (!mine.length) return;
+    h += '<div data-bldzone="' + zk + '" style="border:1px solid ' + zcol + '55;border-left:3px solid ' + zcol + ';border-radius:10px;padding:12px;margin-bottom:12px">';
+    h += '<div style="font-size:12px;font-weight:800;color:' + zcol + ';letter-spacing:1px;margin-bottom:2px">' + ztitle + '</div>';
+    h += '<div style="font-size:11px;color:#999;margin-bottom:8px">' + zsub + '</div>';
+    mine.forEach(([title, gk, items]) => {
+      h += '<div style="font-size:12px;font-weight:700;color:' + zcol + ';margin:10px 0 5px">' + title.toUpperCase() + '</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:4px 10px">';
+      items.forEach(([k, lbl]) => {
+        const path = (gk ? gk + "." : "") + k;
+        const gOn = st.grants ? st.grants[path] !== false : true;
+        h += '<div style="display:flex;align-items:center;gap:5px;font-size:12.5px">' +
+             '<label title="Include this for the client at all. Unticked = they never see it." style="display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" data-bldgrant="' + path + '"' + (gOn ? " checked" : "") + '><span style="color:#7ddb8f">include</span></label>' +
+             '<label title="On by default. They can change this in their own editor." style="display:flex;align-items:center;gap:4px;cursor:pointer;' + (gOn ? '' : 'opacity:.35;pointer-events:none') + '"><input type="checkbox" data-bldmod="' + path + '"' + (st.modules[path] !== false ? " checked" : "") + '><span style="color:#888">on</span></label>' +
+             '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + fsEsc(lbl) + '</span></div>';
+      });
+      h += '</div>';
     });
     h += '</div>';
   });
@@ -750,6 +853,22 @@ function fsBuilderRender() {
   });
   const libLoad = document.getElementById("fsBldLibLoad");
   if (libLoad) libLoad.onclick = () => { syncTop(); document.getElementById("fsBldLibFile").click(); };
+  const logoPick = document.getElementById("fsBldLogoPick");
+  if (logoPick) logoPick.onclick = () => { syncTop(); document.getElementById("fsBldLogoFile").click(); };
+  const logoDel = document.getElementById("fsBldLogoDel");
+  if (logoDel) logoDel.onclick = () => { syncTop(); st.logo = ""; fsBuilderRender(); };
+  const logoFile = document.getElementById("fsBldLogoFile");
+  if (logoFile) logoFile.onchange = async (e) => {
+    const f = e.target.files[0];
+    e.target.value = "";
+    if (!f) return;
+    syncTop();
+    try {
+      const r = await acLogoPrep(f);
+      st.logo = r.data;
+      fsBuilderRender();
+    } catch (err) { alert(err.message); }
+  };
   const libFile = document.getElementById("fsBldLibFile");
   if (libFile) libFile.onchange = e => {
     const f = (e.target.files || [])[0];
@@ -795,6 +914,12 @@ function fsBuilderRender() {
   });
   const syncTop = () => {
     st.name = document.getElementById("fsBldName").value;
+    /* null-guarded: syncTop runs from handlers that can fire on a render where
+       the branding block is not in the DOM yet. st.logo is NOT read here — it is
+       set by its own handler, and reading it from the preview <img> would round
+       -trip the data URL through the DOM on every keystroke. */
+    const bn = document.getElementById("fsBldBrand");
+    if (bn) st.brandName = bn.value;
     /* users: rows write st.users directly, nothing to pull from the DOM here */
     st.incl = document.getElementById("fsBldIncl").checked;
     body.querySelectorAll("[data-bldmod]").forEach(cb => { st.modules[cb.dataset.bldmod] = cb.checked; });
@@ -834,6 +959,8 @@ function fsBuilderRender() {
           if (mg0.equipment.length) { st2.equipment = mg0.equipment; st2.equipmentItems = mg0.equipmentItems; }
         }
         st2.name = (obj.company && obj.company.name) || "";
+        st2.brandName = (obj.company && obj.company.brandName) || "";
+        st2.logo = (obj.company && obj.company.logo) || "";
         st2.users = Array.isArray(obj.users)
           ? obj.users.map(u => ({ name: String((u && u.name) || "").trim(), role: (u && /^(admin|office|tech)$/.test(u.role)) ? u.role : "tech", passHash: (u && u.passHash) || "", status: (u && u.status) === "disabled" ? "disabled" : "active" })).filter(u => u.name)
           : (Array.isArray(obj.techs) ? obj.techs.map(s => ({ name: String(s || "").trim(), role: "tech", passHash: "", status: "active" })).filter(u => u.name) : []);
@@ -863,7 +990,7 @@ function fsBuilderRender() {
     syncTop();
     st.users = (st.users || []).filter(u => u.name && u.name.trim());
     const name = st.name.trim();
-    if (!name) { alert("Give the profile a client / company name first."); return; }
+    if (!name) { alert("Enter a client / company name first."); return; }
     const modules = { cycles: {}, sections: {}, wsTools: {}, resTools: {} };
     Object.entries(st.modules).forEach(([path, v]) => {
       const parts = path.split(".");
@@ -886,7 +1013,13 @@ function fsBuilderRender() {
     if (!st.incl && fsProfile && ((fsProfile.checklists && fsProfile.checklists.modes) || (fsProfile.equipment || []).length)) {
       if (!confirm("WARNING — the equipment fields and test checklists box is UNTICKED.\n\nThe exported profile will contain NO equipment fields and NO checklists. Anyone loading it loses them.\n\nExport anyway?")) return;
     }
-    const out = { app: "firespark-profile", version: 2, created: new Date().toISOString().slice(0, 10), company: { name: name }, modules: modules, grants: grants };
+    /* brandName/logo are omitted entirely when unset rather than written as "",
+       so a profile built without branding is byte-identical to a V0.09 one and
+       the client app's fallback chain never sees an empty string to reason about. */
+    const co = { name: name };
+    if ((st.brandName || "").trim()) co.brandName = st.brandName.trim();
+    if (st.logo) co.logo = st.logo;
+    const out = { app: "firespark-profile", version: 2, created: new Date().toISOString().slice(0, 10), company: co, modules: modules, grants: grants };
     if ((st.users || []).length) {
       /* a user list with no active admin locks the client out of managing users — promote the first */
       if (!st.users.some(u => u.role === "admin" && u.status !== "disabled")) {
