@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v41";
+const FS_BUILD = "acmd-v42";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (FireSpark V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.39 beta</span>
+  <span class="badge">V0.40 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v41";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.39 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.40 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -669,9 +669,6 @@ function fsBldDefault() {
   return { name: "", brandName: "", logo: "", users: [], modules: m, grants: g, equipment: null, equipmentItems: null, checklists: null,
            access: { mode: "none", start: "", expiry: "", user: "", pass: "", passHash: "", contact: "" }, incl: true };
 }
-/* users textarea <-> list. Format "Name, role" per line; role defaults to tech.
-   passHash/status survive a rename-free edit by lowercase name match. */
-
 /* Pass 5 Step 2: per-user rows replace the "Name, role" textarea. State lives on
    st.users directly (oninput/onchange), so preset clicks and export cannot lose
    typed rows. passHash/status ride along untouched — a rename keeps the hash. */
@@ -689,24 +686,24 @@ function fsBldUserRows(st) {
   h += '</div><button class="btn" id="fsBldUAdd" style="margin-top:6px;padding:6px 12px;font-size:12.5px">+ Add user</button>';
   return h;
 }
-function fsBldUsersText(users) {
-  return (users || []).map(u => u.name + (u.role && u.role !== "tech" ? ", " + u.role : "")).join("\n");
-}
-function fsBldUsersParse(txt, prev) {
-  const keep = {};
-  (prev || []).forEach(u => { if (u && u.name) keep[u.name.toLowerCase()] = u; });
-  const out = [];
-  String(txt || "").split("\n").forEach(ln => {
-    const parts = ln.split(",");
-    const name = (parts[0] || "").trim();
-    if (!name) return;
-    let role = (parts[1] || "").trim().toLowerCase();
-    if (!/^(admin|office|tech)$/.test(role)) role = "tech";
-    const old = keep[name.toLowerCase()] || {};
-    out.push({ name: name, role: role, passHash: old.passHash || "", status: old.status || "active" });
-  });
-  return out;
-}
+/* ============ PASS 35 — fsBldUsersText / fsBldUsersParse ARE GONE ==========
+   They converted a "Name, role" textarea to and from st.users. That textarea
+   was replaced by the per-user rows above on 1 Aug 2026 (patch-p5s2.py, A1),
+   which made both functions unreachable — zero callers here, and zero
+   occurrences in Arc Adapt or EverDue since V0.39 lifted the builder out.
+
+   They were kept alive for five passes by test_techid.py calling them
+   directly. Green checks over code the app never runs is not coverage; it is
+   a suite testing itself. The checks went with the functions.
+
+   IF YOU ARE HERE BECAUSE SOMETHING WANTS TO PARSE USERS FROM TEXT: the state
+   is a list of {name, role, passHash, status} objects and the rows edit it in
+   place. Bulk paste is a real feature request, not a restoration — build it
+   against st.users, and do not resurrect the textarea to get it.
+
+   The BACKLOG entry claiming this app had NO users section was wrong. It had
+   one the whole time. See the Pass 35 correction there for the full story.
+   ========================================================================= */
 const FS_BLD_PRESETS = {
   full: () => {},
   service: st => { st.modules["sections.projects"] = false; },
