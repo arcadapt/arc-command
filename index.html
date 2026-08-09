@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v40";
+const FS_BUILD = "acmd-v41";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (FireSpark V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.38 beta</span>
+  <span class="badge">V0.39 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v40";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.38 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.39 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -253,6 +253,15 @@ function deliverFile(blob, name, mime) {
   }
   dlAnchor(blob, name);
   return Promise.resolve("downloaded");
+}
+/* PASS 34 — RESTORED. fsLibMerge below has always called this and Arc Command
+   has never had it: ticking a library in the builder threw a ReferenceError
+   and left the equipment list null. Verbatim from Arc Adapt, where it survived
+   the original lift-out. FS_EQUIP_LIBS is already present here. */
+function fsLibFind(key, extra) {
+  const all = FS_EQUIP_LIBS.concat(Array.isArray(extra) ? extra : []);
+  for (let i = 0; i < all.length; i++) if (all[i] && all[i].key === key) return all[i];
+  return null;
 }
 function fsLibMerge(keys, extra) {
   const eq = [], items = [], seen = Object.create(null);
