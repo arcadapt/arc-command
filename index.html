@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v44";
+const FS_BUILD = "acmd-v45";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (FireSpark V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.42 beta</span>
+  <span class="badge">V0.43 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v44";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.42 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.43 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -305,14 +305,14 @@ const TOOLS_TAB = [
   { id:"qrscan",   label:"Scan tag",    icon:"🔳" }
 ];
 const FS_EQUIP_FIELDS = [
-  "Panel location", "Panel type", "Panel instructions", "Panel battery type / size", "Detectors", "EWIS location", "EWIS type",
+  "Panel location", "Panel type", "Panel instructions", "Panel battery type / size", "Panel battery installed", "Detectors", "EWIS location", "EWIS type",
   "OWS / speaker notes", "Fire extinguisher locations", "Fire extinguisher", "Fire doors", "Hose reel locations",
   "Hydrant / booster location", "Pump room location", "Sprinkler valve room",
   "Exit lights", "Emergency lights", "Gas suppression", "Other equipment"
 ];
 const FS_EQUIP_LIBS = [
   { key:"fire", label:"Fire",
-    fields:["Panel location","Panel type","Panel battery type / size","Panel instructions","Detectors",
+    fields:["Panel location","Panel type","Panel battery type / size", "Panel battery installed","Panel instructions","Detectors",
       "EWIS location","EWIS type","OWS / speaker notes","Fire extinguisher locations","Fire extinguisher",
       "Fire doors","Hose reel locations","Hydrant / booster location","Pump room location","Sprinkler valve room",
       "Exit lights","Emergency lights","Gas suppression","Other equipment"],
