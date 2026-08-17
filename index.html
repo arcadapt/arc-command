@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v62";
+const FS_BUILD = "acmd-v63";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (FireSpark V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.60 beta</span>
+  <span class="badge">V0.61 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v62";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.60 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.61 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -589,6 +589,11 @@ const AC_ZONE = {
   "Test cycles": "register",
   "General": "register",
   "Sections": "register",
+  /* PASS 56 — the first commercial row this builder has ever carried. It sits
+     in the register zone because quoting is register-side work; there is no
+     money zone, and inventing one for two ticks would be exactly the kind of
+     screen Reece asked us to stop adding. */
+  "Money": "register",
   "Workspace tools": "workspace",
   "Resources tools": "workspace"
 };
@@ -656,6 +661,12 @@ function fsBldGroups() {
     ["Test cycles", "cycles", [["monthly", "Monthly"], ["sixMonthly", "6 monthly"], ["annual", "Annual"], ["fiveYearly", "5 yearly"], ["fullFunction", "Full Function"]]],
     ["General", "", [["planner", "Planner"]]],
     ["Sections", "sections", [["service", "Service clients (register)"], ["projects", "Projects (job numbers)"]]],
+    /* PASS 56 — one client, one way to quote. TWO LEVELS ONLY: fsBldExport
+       flattens a grant path to grants[a][b] and DROPS a third segment, so
+       "money.quoting.simple" would silently collide with
+       "money.quoting.pipeline". Do not nest these deeper. */
+    ["Money", "money", [["quotePipeline", "Quotes — full pipeline"],
+                        ["quoteSimple", "Quotes — simple form"]]],
     ["Workspace tools", "wsTools", (typeof TOOLS_TAB !== "undefined" ? TOOLS_TAB : []).map(t => [t.id, t.label])],
     ["Resources tools", "resTools", FS_BLD_RES]
   ];
