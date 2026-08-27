@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v102";
+const FS_BUILD = "acmd-v104";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (pre-rename V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.100 beta</span>
+  <span class="badge">V0.102 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v102";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.100 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.102 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -958,8 +958,14 @@ function fsBuilderRender() {
   const d7 = document.getElementById("fsBld7"), d14 = document.getElementById("fsBld14");
   const setDays = n => {
     syncTop();
-    const t = new Date(); st.access.start = t.toISOString().slice(0, 10);
-    t.setDate(t.getDate() + n); st.access.expiry = t.toISOString().slice(0, 10);
+    /* PASS 102 [P100-N2] - device-local dates, the 27 Aug standing ruling
+       (time is DEVICE-LOCAL, everywhere). toISOString() is UTC: before 10am
+       in Newcastle a profile issued "from today for N days" started AND
+       expired a day early. acmd has no fsTodayLocal(); acLocalDate is its
+       local equivalent, defined here at its only use. */
+    const acLocalDate = d => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    const t = new Date(); st.access.start = acLocalDate(t);
+    t.setDate(t.getDate() + n); st.access.expiry = acLocalDate(t);
     fsBuilderRender();
   };
   if (d7) d7.onclick = () => setDays(7);
