@@ -1,16 +1,4 @@
 <!DOCTYPE html>
-<!--
-Arc Command
-Copyright (c) 2026 Reece Francis. All rights reserved.
-PROPRIETARY. NOT OPEN SOURCE. NO LICENCE IS GRANTED.
-This file is served so the application can run in your browser. That is the
-only permitted use. You may not copy, republish, modify, adapt, distribute,
-sell or reuse this file or any part of it, or incorporate it into any other
-product or service, and you may not remove or alter this notice.
-Third-party libraries loaded by this application remain the property of their
-respective owners and are used under their own licences.
-Full terms: see the LICENSE file in this repository.
--->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -53,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v127";
+const FS_BUILD = "acmd-v128";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (pre-rename V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.125 beta</span>
+  <span class="badge">V0.126 beta</span>
 </header>
 <main>
   <div class="card">
@@ -78,7 +66,7 @@ const FS_BUILD = "acmd-v127";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.125 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.126 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
