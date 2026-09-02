@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v129";
+const FS_BUILD = "acmd-v130";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (pre-rename V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.127 beta</span>
+  <span class="badge">V0.128 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v129";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.127 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.128 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -385,6 +385,282 @@ function fsSubModal(id) {
 }
 function fsClone(o) { return o == null ? o : JSON.parse(JSON.stringify(o)); }
 
+/* ================= PASS 140 [140-E] ================================
+   THE ITEM SIZES SHEET.  W127-2 + W127-3 + W127-4.
+
+   Reece, 2 Sep 2026, twice:
+     "I think we need to create some kind of a sheet perhaps in arc command
+      that shows us the true size of the item and the symbol size next to it."
+     "can we not all have that in arc command with all this data shown and can
+      be edited from there?"
+
+   WHY THE SHEET EXISTS AT ALL. He placed a detector, measured the glyph, got
+   ~600 mm, and the Details panel said 100 mm. BOTH NUMBERS WERE RIGHT: the
+   item IS 100 mm, and a device is drawn as a legible symbol whatever the
+   plan's scale, exactly as every drafting tool draws devices so they match a
+   legend. That is invisible, so it reads as a bug. The fix is not an
+   explanation - it is showing the two numbers, named, side by side.
+
+   THE RESEARCH DECIDED THE SHAPE - see this pass's research write-up in
+   claude/, named in PASS-140-NOTES.md. The tool it studies is NOT named in
+   this file: test_p96 A10 requires arc-command to carry no mention of it
+   anywhere at all, comments included, and a FILENAME counts:
+     - a table WITH A SEARCH BOX. 51 rows is well past the point where
+       scrolling for one row is acceptable, and the tool this borrows from
+       puts a filter on a dialog that usually shows a dozen parameters.
+     - the UNIT IS ON THE COLUMN AND BESIDE THE FIELD. The catalogue format
+       worth copying writes the unit into the header - a number with nothing
+       next to it is the V0.125 1000x failure waiting to happen again.
+     - typing IS the edit. No Apply button, exactly like the equipment fields
+       and checklist editors either side of this one.
+     - ONE LINE says a real size reaches every placement. The tool worth
+       copying puts a modal there and its own users have a fifty-post thread
+       asking for the modal to be removed. He gets the sentence, not the modal.
+
+   THE TABLE BELOW IS GENERATED, NOT HAND-WRITTEN. Arc Command has no TYPES
+   and no FS_SYM_MM of its own, so patch-p140.py reads both workspace apps and
+   emits the union - 51 rows, 15 with a real size, 36 deliberately blank. A
+   row hand-copied here would drift from the product the first time a glyph
+   moved, and nothing would notice. */
+const FS_SYM_SPEC_KEY = "aa-symspec";
+const FS_SYM_SIZE_KEY = "aa-symsize";
+const FS_SYM_SPEC_TABS = [["bldg", "Building"], ["fire", "Fire"], ["elec", "Electrical"],
+                          ["exit", "Exit"], ["tools", "Tools"]];
+const FS_SYM_SPEC_DEF = [
+  { id:"door", tab:"bldg", label:"Door", mm:820, draw:"real" },
+  { id:"dbldoor", tab:"bldg", label:"Double Door", mm:1640, draw:"real" },
+  { id:"lstair", tab:"bldg", label:"L Stairs", mm:1000, draw:"real" },
+  { id:"opening", tab:"bldg", label:"Opening", mm:900, draw:"real" },
+  { id:"rldoor", tab:"bldg", label:"Roller Door", mm:2400, draw:"real" },
+  { id:"sldoor", tab:"bldg", label:"Sliding Door", mm:1800, draw:"real" },
+  { id:"stair", tab:"bldg", label:"Stairs", mm:1000, draw:"real" },
+  { id:"window", tab:"bldg", label:"Window", mm:1200, draw:"real" },
+  { id:"sm240", tab:"fire", label:"240V Smoke", mm:100, draw:"symbol" },
+  { id:"csmoke", tab:"fire", label:"Conc Smoke", mm:100, draw:"symbol" },
+  { id:"cthermal", tab:"fire", label:"Conc Thermal", mm:100, draw:"symbol" },
+  { id:"dba", tab:"fire", label:"dBA", mm:null, draw:"symbol" },
+  { id:"exting", tab:"fire", label:"Extinguisher", mm:150, draw:"symbol", h:800 },
+  { id:"fdcie", tab:"fire", label:"FDCIE", mm:null, draw:"symbol" },
+  { id:"fip", tab:"fire", label:"FIP", mm:null, draw:"symbol" },
+  { id:"blanket", tab:"fire", label:"Fire Blanket", mm:null, draw:"symbol" },
+  { id:"horn", tab:"fire", label:"Horn", mm:null, draw:"symbol" },
+  { id:"hreel", tab:"fire", label:"Hose Reel", mm:null, draw:"symbol" },
+  { id:"io", tab:"fire", label:"Interface", mm:null, draw:"symbol" },
+  { id:"mcp", tab:"fire", label:"MCP", mm:87, draw:"symbol" },
+  { id:"ows", tab:"fire", label:"OWS", mm:null, draw:"symbol" },
+  { id:"smoke", tab:"fire", label:"Smoke", mm:100, draw:"symbol" },
+  { id:"sounder", tab:"fire", label:"Sounder", mm:null, draw:"symbol" },
+  { id:"thermal", tab:"fire", label:"Thermal", mm:100, draw:"symbol" },
+  { id:"vad", tab:"fire", label:"VAD", mm:null, draw:"symbol" },
+  { id:"vesda", tab:"fire", label:"VESDA", mm:null, draw:"symbol" },
+  { id:"wip", tab:"fire", label:"WIP", mm:null, draw:"symbol" },
+  { id:"batten", tab:"elec", label:"Batten", mm:null, draw:"symbol" },
+  { id:"ceilfan", tab:"elec", label:"Ceiling fan", mm:null, draw:"symbol" },
+  { id:"data1", tab:"elec", label:"Data point", mm:null, draw:"symbol" },
+  { id:"db", tab:"elec", label:"DB Board", mm:null, draw:"symbol" },
+  { id:"data2", tab:"elec", label:"Double data", mm:null, draw:"symbol" },
+  { id:"gpo2", tab:"elec", label:"Double GPO", mm:null, draw:"symbol" },
+  { id:"downlt", tab:"elec", label:"Downlight", mm:null, draw:"symbol" },
+  { id:"embatten", tab:"elec", label:"Em. Batten", mm:null, draw:"symbol" },
+  { id:"emrectlum", tab:"elec", label:"Em. Rect", mm:null, draw:"symbol" },
+  { id:"emsqlum", tab:"elec", label:"Em. Square", mm:null, draw:"symbol" },
+  { id:"emtroffer", tab:"elec", label:"Em. Troffer", mm:null, draw:"symbol" },
+  { id:"exfan", tab:"elec", label:"Exhaust fan", mm:null, draw:"symbol" },
+  { id:"msensor", tab:"elec", label:"Motion sensor", mm:null, draw:"symbol" },
+  { id:"rectlum", tab:"elec", label:"Rect light", mm:null, draw:"symbol" },
+  { id:"gpo1", tab:"elec", label:"Single GPO", mm:null, draw:"symbol" },
+  { id:"sqlum", tab:"elec", label:"Square light", mm:null, draw:"symbol" },
+  { id:"troffer", tab:"elec", label:"Troffer", mm:null, draw:"symbol" },
+  { id:"walllt", tab:"elec", label:"Wall light", mm:null, draw:"symbol" },
+  { id:"bglass", tab:"exit", label:"Break Glass", mm:null, draw:"symbol" },
+  { id:"exit", tab:"exit", label:"Exit", mm:null, draw:"symbol" },
+  { id:"exitl", tab:"exit", label:"Exit Left", mm:null, draw:"symbol" },
+  { id:"exitr", tab:"exit", label:"Exit Right", mm:null, draw:"symbol" },
+  { id:"spitfire", tab:"exit", label:"Spitfire", mm:null, draw:"symbol" },
+  { id:"campin", tab:"tools", label:"Photo pin", mm:null, draw:"symbol" }
+];
+let fsSymQuery = "";
+/* The drawn size a workspace app remembers per type, under the key the size
+   slider itself writes. SAME ORIGIN, SO THIS IS THE LIVE VALUE, not a copy:
+   arcadapt and everdue already share this key today. */
+function fsSymSizes() {
+  try {
+    const j = JSON.parse(localStorage.getItem(FS_SYM_SIZE_KEY) || "{}");
+    return j && typeof j === "object" ? j : {};
+  } catch (e) { return {}; }
+}
+function fsSymDefRow(id) {
+  for (let i = 0; i < FS_SYM_SPEC_DEF.length; i++) {
+    if (FS_SYM_SPEC_DEF[i].id === id) return FS_SYM_SPEC_DEF[i];
+  }
+  return null;
+}
+/* What the sheet shows for one row: the edit if there is one, the shipped
+   default if there is not. */
+function fsSymSheetRow(id) {
+  const st = fsBld, ov = (st.symbols && st.symbols[id]) || null, d = fsSymDefRow(id);
+  const sizes = fsSymSizes();
+  return {
+    d: d,
+    mm: ov && ("mm" in ov) ? ov.mm : (d ? d.mm : null),
+    px: ov && typeof ov.px === "number" ? ov.px
+        : (typeof sizes[id] === "number" ? sizes[id] : 32),
+    edited: !!ov
+  };
+}
+function fsSymSheetOpen() {
+  const st = fsBld;
+  if (!st.symbols) {
+    const base = (st._src && st._src.symbols) || (fsProfile && fsProfile.symbols) || {};
+    st.symbols = fsClone(base) || {};
+  }
+  fsSymQuery = "";
+  fsSubModal("fsSymModal").classList.add("show");
+  fsSymSheetRender();
+}
+/* THE FAST PATH, AND IT IS HIS DEVICE ONLY. The profile file is the source of
+   truth and the thing that reaches a client; this write is so that filling 36
+   blanks in one sitting shows up in the workspace tab next door without an
+   export and a re-import. Same origin, no server. R-42 is the way it breaks. */
+function fsSymSheetPersist() {
+  const st = fsBld;
+  try { localStorage.setItem(FS_SYM_SPEC_KEY, JSON.stringify(st.symbols || {})); } catch (e) {}
+  const sizes = fsSymSizes();
+  let moved = false;
+  for (const k in (st.symbols || {})) {
+    const px = st.symbols[k] && st.symbols[k].px;
+    if (typeof px === "number" && px >= 2 && px <= 400 && sizes[k] !== px) {
+      sizes[k] = px; moved = true;
+    }
+  }
+  if (moved) { try { localStorage.setItem(FS_SYM_SIZE_KEY, JSON.stringify(sizes)); } catch (e) {} }
+}
+function fsSymSheetSet(id, field, raw) {
+  const st = fsBld, d = fsSymDefRow(id);
+  if (!d) return;
+  st.symbols = st.symbols || {};
+  const cur = st.symbols[id] || {};
+  const t = String(raw == null ? "" : raw).trim().replace(/,/g, "");
+  if (field === "mm") {
+    if (!t) cur.mm = null;
+    else {
+      const v = parseFloat(t);
+      if (!isFinite(v) || v <= 0 || v > 100000) return;
+      cur.mm = v;
+    }
+  } else {
+    const v = parseFloat(t);
+    if (!isFinite(v) || v < 2 || v > 400) return;
+    cur.px = Math.round(v);
+  }
+  st.symbols[id] = cur;
+  fsSymSheetPersist();
+}
+function fsSymSheetCount() {
+  let n = 0;
+  FS_SYM_SPEC_DEF.forEach(d => { if (typeof fsSymSheetRow(d.id).mm === "number") n++; });
+  return n;
+}
+function fsSymSheetRender() {
+  const body = document.getElementById("fsSymModalBody");
+  if (!body) return;
+  const q = fsSymQuery.trim().toLowerCase();
+  const total = FS_SYM_SPEC_DEF.length, filled = fsSymSheetCount();
+  let h = '<h3 style="margin-bottom:4px">&#128207; Item sizes</h3>';
+  /* THE RELATIONSHIP, STATED ONCE, AT THE TOP. This is the whole answer to
+     W127-2 and it is why the sheet is not just a list of numbers. */
+  h += '<div style="font-size:12px;color:#999;margin-bottom:10px;line-height:1.5">' +
+       '<b style="color:#e8e8e8">Real size</b> is what the item actually is. ' +
+       '<b style="color:#e8e8e8">Symbol size</b> is how big it gets drawn so you can see it on ' +
+       'a plan. Changing one never changes the other.</div>';
+  h += '<div style="font-size:11.5px;color:#ffb74d;margin-bottom:10px">' +
+       'A real size set here applies to every one of these already placed on a plan.</div>';
+  const pct = Math.round((filled / total) * 100);
+  h += '<div style="display:flex;align-items:center;gap:9px;margin-bottom:12px">' +
+       '<span style="flex:1;height:5px;background:#1a1d21;border:1px solid #333;border-radius:3px;overflow:hidden">' +
+       '<span style="display:block;height:100%;width:' + pct + '%;background:#b8860b"></span></span>' +
+       '<span style="font-size:11.5px;color:#999;white-space:nowrap">' + filled + ' of ' + total + ' sized</span></div>';
+  h += '<input id="fsSymSearch" placeholder="Search ' + total + ' items&hellip;" value="' + fsEsc(fsSymQuery).replace(/"/g, "&quot;") +
+       '" style="width:100%;padding:8px 10px;border-radius:8px;border:1px solid #444;background:#2e333a;color:#e8e8e8;font-size:13px;margin-bottom:12px">';
+  let shown = 0;
+  FS_SYM_SPEC_TABS.forEach(([tab, name]) => {
+    const inTab = FS_SYM_SPEC_DEF.filter(d => d.tab === tab);
+    const hit = inTab.filter(d => !q || d.label.toLowerCase().indexOf(q) >= 0 || d.id.indexOf(q) >= 0);
+    if (!hit.length) return;
+    const done = inTab.filter(d => typeof fsSymSheetRow(d.id).mm === "number").length;
+    h += '<div style="font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:#d4a437;' +
+         'margin:14px 0 6px;padding-bottom:5px;border-bottom:1px solid #33383f">' + fsEsc(name) +
+         '<span style="float:right;color:#7d848c;font-weight:500;letter-spacing:.04em">' + done + ' of ' + inTab.length + '</span></div>';
+    hit.forEach(d => {
+      shown++;
+      const r = fsSymSheetRow(d.id);
+      const isReal = d.draw === "real";
+      h += '<div style="padding:9px 0;border-bottom:1px solid #2b2f35">';
+      h += '<div style="font-size:13.5px;font-weight:600;margin-bottom:6px">' + fsEsc(d.label) +
+           '<span style="font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;' +
+           'border-radius:4px;margin-left:8px;border:1px solid ' +
+           (isReal ? '#2f6b3d;background:#16281c;color:#7ddb8f">to scale' : '#3d454b;background:#22262b;color:#8fa0a8">symbol') +
+           '</span></div>';
+      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+      h += '<span style="display:flex;align-items:center;gap:6px">' +
+           '<span style="font-size:11.5px;color:#8f979e">Real</span>' +
+           '<input data-symmm="' + d.id + '" inputmode="decimal" placeholder="not set" value="' +
+           (typeof r.mm === "number" ? r.mm : "") +
+           '" style="width:76px;padding:6px 8px;border-radius:6px;border:1px solid ' +
+           (typeof r.mm === "number" ? "#444" : "#5a4a2a") +
+           ';background:#2e333a;color:#e8e8e8;font-size:13px;text-align:right">' +
+           '<span style="font-size:11.5px;color:#8f979e">mm</span></span>';
+      /* A "real" item IS its real size on the plan, so there is no second
+         number to give and no empty box to wonder about. */
+      h += '<span style="display:flex;align-items:center;gap:6px">' +
+           '<span style="font-size:11.5px;color:#8f979e">Symbol</span>' +
+           (isReal
+             ? '<span style="font-size:12.5px;color:#7ddb8f">drawn at its real size</span>'
+             : '<input data-sympx="' + d.id + '" inputmode="decimal" value="' + r.px +
+               '" style="width:64px;padding:6px 8px;border-radius:6px;border:1px solid #444;' +
+               'background:#2e333a;color:#e8e8e8;font-size:13px;text-align:right">' +
+               '<span style="font-size:11.5px;color:#8f979e">px</span>') +
+           '</span>';
+      h += '</div>';
+      if (d.h) {
+        h += '<div style="font-size:11px;color:#888;margin-top:4px">' + d.h + ' mm high &mdash; the plan looks down, so the width above is what gets drawn.</div>';
+      }
+      h += '</div>';
+    });
+  });
+  if (!shown) h += '<div style="font-size:12.5px;color:#888;padding:18px 0">Nothing matches that.</div>';
+  h += '<div class="row" style="margin-top:14px;gap:8px;flex-wrap:wrap">' +
+       '<button class="btn" id="fsSymReset">Reset every row to the shipped size</button>' +
+       '<span style="flex:1"></span><button class="btn" id="fsSymDone">Done</button></div>';
+  h += '<div style="font-size:11px;color:#888;margin-top:10px;line-height:1.5">' +
+       'Saved as you type. These travel in the exported profile, so a client gets them too.</div>';
+  body.innerHTML = h;
+  const s = document.getElementById("fsSymSearch");
+  if (s) {
+    s.oninput = ev => { fsSymQuery = ev.target.value; fsSymSheetRender();
+                        const n = document.getElementById("fsSymSearch");
+                        if (n) { n.focus(); try { n.setSelectionRange(n.value.length, n.value.length); } catch (e) {} } };
+  }
+  body.querySelectorAll("[data-symmm]").forEach(inp => inp.onchange = () => {
+    fsSymSheetSet(inp.dataset.symmm, "mm", inp.value); fsSymSheetRender();
+  });
+  body.querySelectorAll("[data-sympx]").forEach(inp => inp.onchange = () => {
+    fsSymSheetSet(inp.dataset.sympx, "px", inp.value); fsSymSheetRender();
+  });
+  const rst = document.getElementById("fsSymReset");
+  if (rst) rst.onclick = () => {
+    if (!confirm("Clear every size you have set here and go back to the sizes the app ships with?")) return;
+    fsBld.symbols = {};
+    fsSymSheetPersist();
+    fsSymSheetRender();
+  };
+  const dn = document.getElementById("fsSymDone");
+  if (dn) dn.onclick = () => {
+    fsSubModal("fsSymModal").classList.remove("show");
+    if (typeof fsBldRender === "function") fsBldRender();
+  };
+}
+
 /* ---------- equipment fields ---------- */
 function fsEqEditOpen() {
   const st = fsBld;
@@ -684,7 +960,7 @@ function fsBldDefault() {
   fsBldGroups().forEach(([, gk, items]) => items.forEach(([k]) => { m[(gk ? gk + "." : "") + k] = true; }));
   const g = {};
   fsBldGroups().forEach(([, gk, items]) => items.forEach(([k]) => { g[(gk ? gk + "." : "") + k] = true; }));
-  return { name: "", brandName: "", logo: "", users: [], modules: m, grants: g, equipment: null, equipmentItems: null, checklists: null,
+  return { name: "", brandName: "", logo: "", users: [], modules: m, grants: g, equipment: null, equipmentItems: null, checklists: null, symbols: null,
            access: { mode: "none", start: "", expiry: "", user: "", pass: "", passHash: "", contact: "" }, incl: true };
 }
 /* Pass 5 Step 2: per-user rows replace the "Name, role" textarea. State lives on
@@ -835,7 +1111,10 @@ function fsBuilderRender() {
   h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 10px">' +
        '<button class="btn" id="fsBldLibLoad" style="font-size:12.5px">&#128194; Load a library file&hellip;</button>' +
        '<button class="btn" id="fsBldEqBtn">&#129520; Equipment fields' + (st.equipment ? ' <span style="color:#7ddb8f">(' + st.equipment.length + (st.eqEdited ? ' — edited' : ' — from libraries') + ')</span>' : '') + '</button>' +
-       '<button class="btn" id="fsBldCkBtn">&#128203; Checklists' + (st.checklists ? ' <span style="color:#7ddb8f">(edited)</span>' : '') + '</button></div>';
+       '<button class="btn" id="fsBldCkBtn">&#128203; Checklists' + (st.checklists ? ' <span style="color:#7ddb8f">(edited)</span>' : '') + '</button>' +
+       /* PASS 140 [140-E] - W127-4. Third editor in the row, beside the two
+          that already export with the profile. */
+       '<button class="btn" id="fsBldSymBtn">&#128207; Item sizes <span style="color:#7ddb8f">(' + fsSymSheetCount() + ' of ' + FS_SYM_SPEC_DEF.length + ')</span></button></div>';
   h += '<input type="file" id="fsBldLibFile" accept=".json,application/json" style="display:none">';
   h += '<div class="row" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="fsBldLoad">&#128194; Load profile to edit</button><span style="flex:1"></span><button class="btn" id="fsBldClose">Close</button><button class="btn" id="fsBldExport" style="background:#1b8a3f;border-color:#1b8a3f;color:#fff;font-weight:700">&#128190; Export profile file</button></div>';
   h += '<input type="file" id="fsBldFile" accept=".json,application/json" style="display:none">';
@@ -921,6 +1200,8 @@ function fsBuilderRender() {
   if (eqb) eqb.onclick = () => { syncTop(); fsEqEditOpen(); };
   const ckb = document.getElementById("fsBldCkBtn");
   if (ckb) ckb.onclick = () => { syncTop(); fsCkEditOpen(); };
+  const smb = document.getElementById("fsBldSymBtn");
+  if (smb) smb.onclick = () => { syncTop(); fsSymSheetOpen(); };
   body.querySelectorAll("[data-bldgrant]").forEach(cb => cb.onchange = () => {
     syncTop();   /* AC fix: was missing — a give-tick toggle wiped the typed name/users/access */
     st.grants = st.grants || {};
@@ -1065,6 +1346,13 @@ function fsBuilderRender() {
     if (eq && eq.length) out.equipment = eq;
     if (eqi && eqi.length) out.equipmentItems = eqi;
     if (ckl && ckl.modes) out.checklists = ckl;
+    /* PASS 140 [140-E] - the item catalogue rides the profile, which is the
+       channel that actually reaches a client's device. Only EDITED rows are
+       written: a profile that repeated all 51 shipped defaults would freeze
+       them, and the next pass that corrects a number would not reach anyone
+       holding an old profile file. */
+    const sym = st.symbols || base.symbols;
+    if (sym && Object.keys(sym).length) out.symbols = sym;
     if (st.access.mode !== "none") {
       const a = st.access;
       let passHash = a.passHash || "";
