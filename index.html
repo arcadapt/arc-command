@@ -41,13 +41,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v133";
+const FS_BUILD = "acmd-v134";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (pre-rename V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.131 beta</span>
+  <span class="badge">V0.132 beta</span>
 </header>
 <main>
   <div class="card">
@@ -66,7 +66,7 @@ const FS_BUILD = "acmd-v133";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.131 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.132 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -435,9 +435,9 @@ const FS_SYM_SPEC_DEF = [
   { id:"sldoor", tab:"bldg", label:"Sliding Door", mm:1800, draw:"real" },
   { id:"stair", tab:"bldg", label:"Stairs", mm:1000, draw:"real" },
   { id:"window", tab:"bldg", label:"Window", mm:1200, draw:"real" },
-  { id:"sm240", tab:"fire", label:"240V Smoke", mm:100, draw:"symbol" },
-  { id:"csmoke", tab:"fire", label:"Conc Smoke", mm:100, draw:"symbol" },
-  { id:"cthermal", tab:"fire", label:"Conc Thermal", mm:100, draw:"symbol" },
+  { id:"sm240", tab:"fire", label:"240V Smoke", mm:100, draw:"symbol", dia:1 },
+  { id:"csmoke", tab:"fire", label:"Conc Smoke", mm:100, draw:"symbol", dia:1 },
+  { id:"cthermal", tab:"fire", label:"Conc Thermal", mm:100, draw:"symbol", dia:1 },
   { id:"dba", tab:"fire", label:"dBA", mm:null, draw:"symbol" },
   { id:"exting", tab:"fire", label:"Extinguisher", mm:150, draw:"symbol", h:800 },
   { id:"fdcie", tab:"fire", label:"FDCIE", mm:null, draw:"symbol" },
@@ -448,9 +448,9 @@ const FS_SYM_SPEC_DEF = [
   { id:"io", tab:"fire", label:"Interface", mm:null, draw:"symbol" },
   { id:"mcp", tab:"fire", label:"MCP", mm:87, draw:"symbol" },
   { id:"ows", tab:"fire", label:"OWS", mm:null, draw:"symbol" },
-  { id:"smoke", tab:"fire", label:"Smoke", mm:100, draw:"symbol" },
+  { id:"smoke", tab:"fire", label:"Smoke", mm:100, draw:"symbol", dia:1 },
   { id:"sounder", tab:"fire", label:"Sounder", mm:null, draw:"symbol" },
-  { id:"thermal", tab:"fire", label:"Thermal", mm:100, draw:"symbol" },
+  { id:"thermal", tab:"fire", label:"Thermal", mm:100, draw:"symbol", dia:1 },
   { id:"vad", tab:"fire", label:"VAD", mm:null, draw:"symbol" },
   { id:"vesda", tab:"fire", label:"VESDA", mm:null, draw:"symbol" },
   { id:"wip", tab:"fire", label:"WIP", mm:null, draw:"symbol" },
@@ -603,7 +603,11 @@ function fsSymSheetRender() {
            '</span></div>';
       h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
       h += '<span style="display:flex;align-items:center;gap:6px">' +
-           '<span style="font-size:11.5px;color:#8f979e">Real</span>' +
+           /* PASS 144 [144-A] W127-5 - the same flag the workspace asks,
+              asked here. This is the sheet where he fills the blanks in, so
+              it is the sheet that most needs to say WHICH number it wants. */
+           '<span style="font-size:11.5px;color:#8f979e">Real' +
+           (d.dia ? ' \u00d8' : '') + '</span>' +
            '<input data-symmm="' + d.id + '" inputmode="decimal" placeholder="not set" value="' +
            (typeof r.mm === "number" ? r.mm : "") +
            '" style="width:76px;padding:6px 8px;border-radius:6px;border:1px solid ' +
