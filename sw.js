@@ -1,4 +1,4 @@
-const CACHE = "acmd-v143";
+const CACHE = "acmd-v144";
 const PREFIX = "acmd-";   // PASS 39 [39-4] — this app owns ONLY its own caches
 if (CACHE.indexOf(PREFIX) !== 0) throw new Error("cache name does not carry its own prefix");
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-512-maskable.png", "./favicon.png"];
