@@ -52,13 +52,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v155";
+const FS_BUILD = "acmd-v156";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (pre-rename V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.153 beta</span>
+  <span class="badge">V0.154 beta</span>
 </header>
 <main>
   <div class="card">
@@ -77,7 +77,7 @@ const FS_BUILD = "acmd-v155";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.153 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.154 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -465,6 +465,7 @@ const FS_SYM_SPEC_DEF = [
   { id:"sounder", tab:"fire", label:"Sounder", mm:null, draw:"symbol" },
   { id:"thermal", tab:"fire", label:"Thermal", mm:100, draw:"symbol", dia:1 },
   { id:"vad", tab:"fire", label:"VAD", mm:null, draw:"symbol" },
+  { id:"vadt", tab:"fire", label:"VAD Thermal", mm:null, draw:"symbol" },
   { id:"vesda", tab:"fire", label:"VESDA", mm:null, draw:"symbol" },
   { id:"wip", tab:"fire", label:"WIP", mm:null, draw:"symbol" },
   { id:"batten", tab:"elec", label:"Batten", mm:null, draw:"symbol" },
@@ -490,6 +491,7 @@ const FS_SYM_SPEC_DEF = [
   { id:"exitl", tab:"exit", label:"Exit Left", mm:null, draw:"symbol" },
   { id:"exitr", tab:"exit", label:"Exit Right", mm:null, draw:"symbol" },
   { id:"spitfire", tab:"exit", label:"Spitfire", mm:null, draw:"symbol" },
+  { id:"spitsm", tab:"exit", label:"SM Spitfire", mm:null, draw:"symbol" },
   { id:"campin", tab:"tools", label:"Photo pin", mm:null, draw:"symbol" }
 ];
 let fsSymQuery = "";
