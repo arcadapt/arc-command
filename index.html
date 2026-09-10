@@ -52,13 +52,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v174";
+const FS_BUILD = "acmd-v175";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (pre-rename V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.172 beta</span>
+  <span class="badge">V0.173 beta</span>
 </header>
 <main>
   <div class="card">
@@ -77,7 +77,7 @@ const FS_BUILD = "acmd-v174";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.172 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.173 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -437,6 +437,22 @@ const FS_SYM_SPEC_KEY = "aa-symspec";
 const FS_SYM_SIZE_KEY = "aa-symsize";
 const FS_SYM_SPEC_TABS = [["bldg", "Building"], ["fire", "Fire"], ["elec", "Electrical"],
                           ["exit", "Exit"], ["tools", "Tools"]];
+/* PASS 192 [192-B] - W172-A. His three words on the V0.172 walk, answering
+   "all 55 items, or just Fire / Electrical / Exit?": "fire electrical exit".
+   [191-A] put the Tested dropdown on every row, deliberately, because which of
+   his 55 item types are testable is his trade and not mine to guess. He has
+   now said. A door is never tested and the control on that row did nothing.
+
+   A RENDER RULE, NOT A DATA RULE. fsSymSheetSet still accepts a period for any
+   type and nothing stored is deleted - a profile authored between V0.172 and
+   this build may carry one, and dropping it silently would move a client's due
+   dates with nothing on screen to say why. A hidden type that HAS a period
+   says so on its row instead. */
+const FS_TESTABLE_TABS = ["fire", "elec", "exit"];
+function fsTypeTestable(id) {
+  const d = fsSymDefRow(id);
+  return !!d && FS_TESTABLE_TABS.indexOf(d.tab) >= 0;
+}
 const FS_SYM_SPEC_DEF = [
   { id:"door", tab:"bldg", label:"Door", mm:820, draw:"real" },
   { id:"dbldoor", tab:"bldg", label:"Double Door", mm:1640, draw:"real" },
@@ -683,7 +699,18 @@ function fsSymSheetRender() {
            '</span>';
       /* PASS 191 [191-A] - W136-3. The third thing Arc Command says about a
          type, beside its real size and its symbol size. Blank is the default
-         and blank is today's behaviour. */
+         and blank is today's behaviour.
+         PASS 192 [192-B] - W172-A: on the Fire, Electrical and Exit tabs only.
+         A type on a hidden tab that already carries a period is NOT silently
+         stripped - it says so, because a setting that disappears without a
+         word is worse than one in an odd place. */
+      if (!fsTypeTestable(d.id)) {
+        if (r.period) {
+          h += '<span style="font-size:11.5px;color:#ffb74d">Tested: ' +
+               fsEsc(fsTestPeriodLabel(r.period)) +
+               ' &mdash; set before this item type was taken off the list. Still in force.</span>';
+        }
+      } else
       h += '<span style="display:flex;align-items:center;gap:6px">' +
            '<span style="font-size:11.5px;color:#8f979e">Tested</span>' +
            '<select data-symper="' + d.id + '" style="padding:6px 8px;border-radius:6px;' +
