@@ -52,13 +52,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v173";
+const FS_BUILD = "acmd-v174";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (pre-rename V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.171 beta</span>
+  <span class="badge">V0.172 beta</span>
 </header>
 <main>
   <div class="card">
@@ -77,7 +77,7 @@ const FS_BUILD = "acmd-v173";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.171 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.172 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -504,6 +504,32 @@ function fsSymSizes() {
     return j && typeof j === "object" ? j : {};
   } catch (e) { return {}; }
 }
+/* PASS 191 [191-A] - W136-3. THE FIVE PERIODS, WITH BOTH NAMES FOR EACH.
+
+   Arc Command has always called them monthly / sixMonthly / annual /
+   fiveYearly / fullFunction (fsBldGroups, modules.cycles). Arc Adapt and
+   EverDue call the same five lastMonthly / last6m / lastAnnual / last5y /
+   lastFF (FS_CYCLES). Nothing had ever needed to cross that gap before.
+
+   `aa` IS WHAT GOES IN THE PROFILE, because Arc Adapt is what reads it.
+   Writing this app's own key would have made every lookup over there miss,
+   fall through to today's behaviour, and ship the whole feature green and
+   doing nothing. test_p191 K1 asserts this table stays in step with both
+   apps' own lists, so a sixth period cannot be added to one and forgotten
+   here. */
+const FS_TEST_PERIODS = [
+  { aa: "lastMonthly", ac: "monthly",      label: "Monthly" },
+  { aa: "last6m",      ac: "sixMonthly",   label: "6 monthly" },
+  { aa: "lastAnnual",  ac: "annual",       label: "Annual" },
+  { aa: "last5y",      ac: "fiveYearly",   label: "5 yearly" },
+  { aa: "lastFF",      ac: "fullFunction", label: "Full Function" }
+];
+function fsTestPeriodLabel(aaKey) {
+  for (let i = 0; i < FS_TEST_PERIODS.length; i++) {
+    if (FS_TEST_PERIODS[i].aa === aaKey) return FS_TEST_PERIODS[i].label;
+  }
+  return "";
+}
 function fsSymDefRow(id) {
   for (let i = 0; i < FS_SYM_SPEC_DEF.length; i++) {
     if (FS_SYM_SPEC_DEF[i].id === id) return FS_SYM_SPEC_DEF[i];
@@ -520,6 +546,9 @@ function fsSymSheetRow(id) {
     mm: ov && ("mm" in ov) ? ov.mm : (d ? d.mm : null),
     px: ov && typeof ov.px === "number" ? ov.px
         : (typeof sizes[id] === "number" ? sizes[id] : 32),
+    /* PASS 191 [191-A] - blank means "use the site's period", which is exactly
+       what the register does today. There is no default to fall back to here. */
+    period: (ov && typeof ov.period === "string") ? ov.period : "",
     edited: !!ov
   };
 }
@@ -562,6 +591,18 @@ function fsSymSheetSet(id, field, raw) {
       const v = parseFloat(t);
       if (!isFinite(v) || v <= 0 || v > 100000) return;
       cur.mm = v;
+    }
+  } else if (field === "period") {
+    /* PASS 191 [191-A] - only a key this table knows, and "" clears the row
+       back to the site's own period. A string that is not in the table is
+       dropped rather than stored: the register would ignore it anyway, and a
+       stored value the register ignores is a setting that lies. */
+    if (!t) delete cur.period;
+    else {
+      let okKey = false;
+      FS_TEST_PERIODS.forEach(function (p) { if (p.aa === t) okKey = true; });
+      if (!okKey) return;
+      cur.period = t;
     }
   } else {
     const v = parseFloat(t);
@@ -640,6 +681,20 @@ function fsSymSheetRender() {
                'background:#2e333a;color:#e8e8e8;font-size:13px;text-align:right">' +
                '<span style="font-size:11.5px;color:#8f979e">px</span>') +
            '</span>';
+      /* PASS 191 [191-A] - W136-3. The third thing Arc Command says about a
+         type, beside its real size and its symbol size. Blank is the default
+         and blank is today's behaviour. */
+      h += '<span style="display:flex;align-items:center;gap:6px">' +
+           '<span style="font-size:11.5px;color:#8f979e">Tested</span>' +
+           '<select data-symper="' + d.id + '" style="padding:6px 8px;border-radius:6px;' +
+           'border:1px solid ' + (r.period ? '#444' : '#5a4a2a') + ';background:#2e333a;' +
+           'color:#e8e8e8;font-size:12.5px">' +
+           '<option value=""' + (r.period ? '' : ' selected') + '>site\u2019s period</option>' +
+           FS_TEST_PERIODS.map(function (p) {
+             return '<option value="' + p.aa + '"' + (r.period === p.aa ? ' selected' : '') +
+                    '>' + fsEsc(p.label) + '</option>';
+           }).join('') +
+           '</select></span>';
       h += '</div>';
       if (d.h) {
         h += '<div style="font-size:11px;color:#888;margin-top:4px">' + d.h + ' mm high &mdash; the plan looks down, so the width above is what gets drawn.</div>';
@@ -652,7 +707,9 @@ function fsSymSheetRender() {
        '<button class="btn" id="fsSymReset">Reset every row to the shipped size</button>' +
        '<span style="flex:1"></span><button class="btn" id="fsSymDone">Done</button></div>';
   h += '<div style="font-size:11px;color:#888;margin-top:10px;line-height:1.5">' +
-       'Saved as you type. These travel in the exported profile, so a client gets them too.</div>';
+       'Saved as you type. These travel in the exported profile, so a client gets them too.<br>' +
+       '<b style="color:#e8e8e8">Tested</b> is how often that kind of item is due. Leave it on ' +
+       '&ldquo;site&rsquo;s period&rdquo; and it behaves exactly as it does now.</div>';
   body.innerHTML = h;
   const s = document.getElementById("fsSymSearch");
   if (s) {
@@ -665,6 +722,9 @@ function fsSymSheetRender() {
   });
   body.querySelectorAll("[data-sympx]").forEach(inp => inp.onchange = () => {
     fsSymSheetSet(inp.dataset.sympx, "px", inp.value); fsSymSheetRender();
+  });
+  body.querySelectorAll("[data-symper]").forEach(sel => sel.onchange = () => {
+    fsSymSheetSet(sel.dataset.symper, "period", sel.value); fsSymSheetRender();
   });
   const rst = document.getElementById("fsSymReset");
   if (rst) rst.onclick = () => {
