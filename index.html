@@ -52,13 +52,13 @@ footer { text-align:center; font-size:11px; color:#667; padding:18px; }
 </head>
 <body>
 <script>/* Build stamp — MUST equal the CACHE name in sw.js. test_version.py enforces it. */
-const FS_BUILD = "acmd-v180";
+const FS_BUILD = "acmd-v181";
 </script>
 <!-- lineage: Arc Command v0.01 beta == the SparkCommand vendor block lifted out of Arc Adapt v0.01 (pre-rename V1.30 feature state) per the designed removal seam -->
 <header>
   <img src="icon-192.png" alt="" style="width:43px;height:34px;object-fit:contain">
   <span class="wordmark"><span class="arc">ARC</span> <span class="cmd">COMMAND</span></span>
-  <span class="badge">V0.178 beta</span>
+  <span class="badge">V0.179 beta</span>
 </header>
 <main>
   <div class="card">
@@ -77,7 +77,7 @@ const FS_BUILD = "acmd-v180";
     </ul>
   </div>
 </main>
-<footer>Arc Command V0.178 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
+<footer>Arc Command V0.179 beta · builds profiles for Arc Adapt &amp; EverDue</footer>
 <script>
 "use strict";
 function fsEsc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
@@ -455,12 +455,12 @@ function fsTypeTestable(id) {
 }
 const FS_SYM_SPEC_DEF = [
   { id:"door", tab:"bldg", label:"Door", mm:820, draw:"real" },
-  { id:"dbldoor", tab:"bldg", label:"Double Door", mm:1640, draw:"real" },
-  { id:"lstair", tab:"bldg", label:"L Stairs", mm:1000, draw:"real" },
+  { id:"dbldoor", tab:"bldg", label:"Double Door", mm:1840, draw:"real" },
+  { id:"lstair", tab:"bldg", label:"L Stairs", mm:2900, draw:"real" },
   { id:"opening", tab:"bldg", label:"Opening", mm:900, draw:"real" },
   { id:"rldoor", tab:"bldg", label:"Roller Door", mm:2400, draw:"real" },
   { id:"sldoor", tab:"bldg", label:"Sliding Door", mm:1800, draw:"real" },
-  { id:"stair", tab:"bldg", label:"Stairs", mm:1000, draw:"real" },
+  { id:"stair", tab:"bldg", label:"Stairs", mm:4200, mmW:1000, draw:"real" },
   { id:"window", tab:"bldg", label:"Window", mm:1200, draw:"real" },
   { id:"sm240", tab:"fire", label:"240V Smoke", mm:100, draw:"symbol", dia:1 },
   { id:"csmoke", tab:"fire", label:"Conc Smoke", mm:100, draw:"symbol", dia:1 },
